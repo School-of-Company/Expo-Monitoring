@@ -1,0 +1,13 @@
+# Local demo: a fake Eureka plus two fake services that expose
+# http_server_requests_seconds, so the discovery -> dashboard path can be seen
+# without the real MSA.
+#   EUREKA_HOST=172.28.0.50 docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d
+services:
+  fake-services:
+    image: node:22-slim
+    command: ["node", "/app/fake-services.mjs"]
+    volumes:
+      - ./dev/fake-services.mjs:/app/fake-services.mjs:ro
+    networks:
+      monitoring:
+        ipv4_address: 172.28.0.50

@@ -1,0 +1,53 @@
+name: expo-monitoring
+
+# Shared Prometheus + Grafana for the Expo MSA. Targets are discovered from
+# Eureka (prometheus.yml), so adding a service or an instance needs no change here.
+# Both UIs are published on loopback only - reach them with an SSH tunnel.
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    # prometheus.yml queries http://eureka:8761. Point that name at your Eureka
+    # host (EUREKA_HOST in .env). host-gateway = Eureka runs on the Docker host.
+    extra_hosts:
+      - "eureka:${EUREKA_HOST:-host-gateway}"
+    networks:
+      monitoring:
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    depends_on:
+      - prometheus
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks:
+      monitoring:
+    restart: unless-stopped
+
+networks:
+  monitoring:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+volumes:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,73 @@
+groups:
+  - name: service-common
+    rules:
+      - alert: ServiceDown
+        expr: up{job="eureka-services"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} {{ $labels.instance }}: metrics endpoint not scrapable"
+          description: >-
+            Eureka still lists this instance but Prometheus cannot scrape it.
+            Once Eureka evicts a crashed instance the target disappears and this
+            alert resolves, so it is not a long-term record of the outage.
+
+      # The traffic floor stops a few failures on a quiet service from flapping.
+      - alert: ServiceHigh5xxRate
+        expr: |
+          service:http_errors_5xx:ratio1m > 0.05
+          and
+          service:http_requests:rate1m > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }}: more than 5% of responses are 5xx"
+          description: The 5xx ratio has been above 5% for 5 minutes.
+
+  # Gateway-specific rules, carried over from Expo-Gateway (monitoring/prometheus/alerts.yml).
+  # GatewayDown and GatewayHigh5xxRate are covered by the common rules above.
+  - name: expo-gateway
+    rules:
+      # Catches a dead instance that Eureka still lists as UP (SIGKILL / OOM /
+      # host down): the instance count never drops until its lease expires, but
+      # every request routed to it fails with 502.
+      - alert: GatewayUpstream502Rate
+        expr: |
+          (
+            sum by (app) (rate(gateway_http_requests_total{status="502"}[1m]))
+            /
+            sum by (app) (rate(gateway_http_requests_total[1m]))
+          ) > 0.2
+          and
+          sum by (app) (rate(gateway_http_requests_total[1m])) > 0.1
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.app }}: more than 20% of requests fail with 502"
+          description: >-
+            Requests routed to {{ $labels.app }} are failing at the connection
+            level. If gateway_upstream_healthy_instances is still above 0, Eureka
+            has not noticed yet (lease not expired).
+
+      - alert: GatewayNoHealthyInstances
+        expr: gateway_upstream_healthy_instances == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.app }}: Eureka reports no UP instance"
+          description: >-
+            This is Eureka's view, not proof of reachability - a crashed
+            instance stays UP until its lease expires.
+
+      - alert: GatewayEurekaPollFailing
+        expr: increase(gateway_upstream_poll_failures_total[2m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Background Eureka poll failing for {{ $labels.app }}"
+          description: gateway_upstream_healthy_instances is dropped while polls fail, so it is not reporting.

@@ -1,0 +1,85 @@
+rule_files:
+  - ../rules/recording.yml
+  - ../rules/alerts.yml
+
+evaluation_interval: 15s
+
+tests:
+  # 10 req/s with 10% 5xx for 8 minutes: recording rules match, ServiceHigh5xxRate fires.
+  - interval: 15s
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="expo-form-server",instance="a",status="200"}'
+        values: '0+135x40'
+      - series: 'http_server_requests_seconds_count{service="expo-form-server",instance="a",status="500"}'
+        values: '0+15x40'
+    promql_expr_test:
+      - expr: service:http_requests:rate1m{service="expo-form-server"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'service:http_requests:rate1m{service="expo-form-server"}'
+            value: 10
+      - expr: service:http_errors_5xx:ratio1m{service="expo-form-server"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'service:http_errors_5xx:ratio1m{service="expo-form-server"}'
+            value: 0.1
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ServiceHigh5xxRate
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: ServiceHigh5xxRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: expo-form-server
+            exp_annotations:
+              summary: "expo-form-server: more than 5% of responses are 5xx"
+              description: The 5xx ratio has been above 5% for 5 minutes.
+
+  # Same error ratio at 0.05 req/s is below the traffic floor: no alert.
+  - interval: 15s
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="quiet",instance="a",status="200"}'
+        values: '0+0.675x40'
+      - series: 'http_server_requests_seconds_count{service="quiet",instance="a",status="500"}'
+        values: '0+0.075x40'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: ServiceHigh5xxRate
+        exp_alerts: []
+
+  # Gateway series map onto the same record names.
+  - interval: 15s
+    input_series:
+      - series: 'gateway_http_requests_total{service="expo-gateway",status="200",app="x"}'
+        values: '0+30x40'
+    promql_expr_test:
+      - expr: service:http_requests:rate1m{service="expo-gateway"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'service:http_requests:rate1m{service="expo-gateway"}'
+            value: 2
+
+  - interval: 15s
+    input_series:
+      - series: 'up{job="eureka-services",service="expo-form-server",instance="a"}'
+        values: '1x12 0x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ServiceDown
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: eureka-services
+              service: expo-form-server
+              instance: a
+            exp_annotations:
+              summary: "expo-form-server a: metrics endpoint not scrapable"
+              description: >-
+                Eureka still lists this instance but Prometheus cannot scrape it.
+                Once Eureka evicts a crashed instance the target disappears and this
+                alert resolves, so it is not a long-term record of the outage.

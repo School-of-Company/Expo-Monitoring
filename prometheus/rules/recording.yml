@@ -1,0 +1,36 @@
+# Common names for every stack. Spring (Micrometer) and conforming NestJS
+# services expose http_server_requests_seconds{method,status,uri}; the gateway
+# keeps its own gateway_http_* names and is mapped onto the same record names
+# with `or`. `service` comes from the Eureka app name (see prometheus.yml).
+groups:
+  - name: service-common
+    rules:
+      - record: service:http_requests:rate1m
+        expr: |
+          sum by (service) (rate(http_server_requests_seconds_count[1m]))
+          or
+          sum by (service) (rate(gateway_http_requests_total[1m]))
+
+      - record: service:http_errors_5xx:ratio1m
+        expr: |
+          (
+            sum by (service) (rate(http_server_requests_seconds_count{status=~"5.."}[1m]))
+            /
+            sum by (service) (rate(http_server_requests_seconds_count[1m]))
+          )
+          or
+          (
+            sum by (service) (rate(gateway_http_requests_total{status=~"5.."}[1m]))
+            /
+            sum by (service) (rate(gateway_http_requests_total[1m]))
+          )
+
+      # Needs the histogram: Spring must set
+      # management.metrics.distribution.percentiles-histogram.http.server.requests=true
+      - record: service:http_latency_p95:5m
+        expr: |
+          histogram_quantile(0.95,
+            sum by (service, le) (rate(http_server_requests_seconds_bucket[5m])))
+          or
+          histogram_quantile(0.95,
+            sum by (service, le) (rate(gateway_http_request_duration_seconds_bucket[5m])))
