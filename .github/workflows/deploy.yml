@@ -1,0 +1,57 @@
+name: Deploy
+
+# main -> prod, develop -> dev (glink.kr, team1/expo)
+# 서버에서는 docker 없이 Prometheus/Grafana 바이너리를 pm2 로 실행한다.
+# eureka:8761, prometheus:9090 같은 compose 주소는 서버의 deploy.sh 가 환경별 주소로 바꿔 넣는다.
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-monitoring-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref_name == 'main' || github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    env:
+      SVC: monitoring
+      DEPLOY_ENV: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+      REMOTE_ROOT: /srv/users/festa/2026/dev/team1/expo
+    steps:
+      - uses: actions/checkout@v4
+
+      # README 의 검증 절차와 같다. 설정·룰이 깨져 있으면 업로드 전에 멈춘다.
+      - name: Validate Prometheus config and rules
+        run: |
+          promtool() { docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p:ro" prom/prometheus:v2.55.1 "$@"; }
+          promtool check config /p/prometheus.yml
+          promtool check rules /p/rules/recording.yml /p/rules/alerts.yml
+          promtool test rules /p/tests/rules.test.yml
+
+      - name: Package
+        run: tar czf release.tar.gz prometheus grafana
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.EXPO_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.EXPO_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s
+' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s
+' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Upload and deploy
+        env:
+          HOST: ${{ vars.EXPO_SSH_HOST }}
+          PORT: ${{ vars.EXPO_SSH_PORT }}
+          USER: ${{ vars.EXPO_SSH_USER }}
+        run: |
+          REL="${GITHUB_SHA::12}-${GITHUB_RUN_ATTEMPT}"
+          scp -P "$PORT" release.tar.gz "$USER@$HOST:$REMOTE_ROOT/apps/$DEPLOY_ENV/$SVC/incoming/$REL.tar.gz"
+          ssh -p "$PORT" "$USER@$HOST" "$REMOTE_ROOT/bin/deploy.sh $SVC $DEPLOY_ENV $REL"
