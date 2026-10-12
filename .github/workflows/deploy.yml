@@ -13,6 +13,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  inspect:
+    if: github.event_name == 'workflow_dispatch' && github.ref_name != 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH for read-only inspection
+        env:
+          SSH_KEY: ${{ secrets.EXPO_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.EXPO_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Inspect monitoring targets and listeners
+        env:
+          HOST: ${{ vars.EXPO_SSH_HOST }}
+          PORT: ${{ vars.EXPO_SSH_PORT }}
+          USER: ${{ vars.EXPO_SSH_USER }}
+        run: ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$PORT" "$USER@$HOST" 'node --input-type=module' < dev/inspect-server.mjs
+
   deploy:
     if: github.ref_name == 'main'
     runs-on: ubuntu-latest
