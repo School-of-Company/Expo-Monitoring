@@ -1,0 +1,538 @@
+rule_files:
+  - "../rules/attendance.yml"
+evaluation_interval: '15s'
+tests:
+  - interval: '15s'
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",status="200"}'
+        values: '0+27x100'
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",status="503"}'
+        values: '0+3x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",le="3"}'
+        values: '0+28.5x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",le="+Inf"}'
+        values: '0+30x100'
+      - series: 'attendance_guard_lock_wait_seconds_count{service="expo-attention-server",instance="a",kind="scan"}'
+        values: '0+30x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",instance="a",kind="scan",le="1"}'
+        values: '0+28.5x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",instance="a",kind="scan",le="+Inf"}'
+        values: '0+30x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="user",outcome="failure"}'
+        values: '0+3x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="user",outcome="circuit_open"}'
+        values: '0+15x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="user",outcome="conflict"}'
+        values: '0+15x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="user",outcome="not_found"}'
+        values: '0+15x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="user",outcome="success"}'
+        values: '0+15x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="expo",outcome="failure"}'
+        values: '0+3x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="expo",outcome="circuit_open"}'
+        values: '0+15x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="expo",outcome="conflict"}'
+        values: '0+15x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="expo",outcome="not_found"}'
+        values: '0+15x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="expo",outcome="success"}'
+        values: '0+15x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="application",outcome="failure"}'
+        values: '0+3x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="application",outcome="circuit_open"}'
+        values: '0+15x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="application",outcome="conflict"}'
+        values: '0+15x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="application",outcome="not_found"}'
+        values: '0+15x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="application",outcome="success"}'
+        values: '0+15x100'
+      - series: 'attendance_circuit_breaker_state{service="expo-attention-server",instance="a",name="user"}'
+        values: '1x100'
+      - series: 'attendance_circuit_breaker_state{service="expo-attention-server",instance="a",name="expo"}'
+        values: '2x100'
+      - series: 'attendance_circuit_breaker_state{service="expo-attention-server",instance="a",name="application"}'
+        values: '0x100'
+      - series: 'attendance_qr_entry_pending{service="expo-attention-server",instance="a"}'
+        values: '3x100'
+      - series: 'attendance_qr_entry_pending{service="expo-attention-server",instance="b"}'
+        values: '3x100'
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/qr/{expoId}",status="200"}'
+        values: '0+27x100'
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/qr/{expoId}",status="503"}'
+        values: '0+3x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/qr/{expoId}",le="3"}'
+        values: '0+28.5x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/qr/{expoId}",le="+Inf"}'
+        values: '0+30x100'
+      - series: 'attendance_guard_lock_wait_seconds_count{service="expo-attention-server",instance="a",kind="cancel"}'
+        values: '0+30x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",instance="a",kind="cancel",le="0.1"}'
+        values: '0+28.5x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",instance="a",kind="cancel",le="+Inf"}'
+        values: '0+30x100'
+    alert_rule_test:
+      - eval_time: '20m'
+        alertname: 'AttendanceCircuitBreakerOpen'
+        exp_alerts:
+          - exp_labels:
+              severity: 'warning'
+              service: 'expo-attention-server'
+              instance: 'a'
+              name: 'user'
+            exp_annotations:
+              summary: 'a user: circuit open for 1 minute'
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHigh5xxRate'
+        exp_alerts:
+          - exp_labels:
+              severity: 'warning'
+              service: 'expo-attention-server'
+              uri: '/attendance/{expoId}'
+            exp_annotations:
+              summary: '/attendance/{expoId}: entrance scan 5xx above 5% for 5 minutes'
+          - exp_labels:
+              severity: 'warning'
+              service: 'expo-attention-server'
+              uri: '/attendance/qr/{expoId}'
+            exp_annotations:
+              summary: '/attendance/qr/{expoId}: entrance scan 5xx above 5% for 5 minutes'
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHighLatency'
+        exp_alerts:
+          - exp_labels:
+              severity: 'warning'
+              service: 'expo-attention-server'
+              uri: '/attendance/{expoId}'
+            exp_annotations:
+              summary: '/attendance/{expoId}: entrance scan p95 above 2 seconds for 5 minutes'
+          - exp_labels:
+              severity: 'warning'
+              service: 'expo-attention-server'
+              uri: '/attendance/qr/{expoId}'
+            exp_annotations:
+              summary: '/attendance/qr/{expoId}: entrance scan p95 above 2 seconds for 5 minutes'
+      - eval_time: '20m'
+        alertname: 'AttendanceDownstreamFailures'
+        exp_alerts:
+          - exp_labels:
+              severity: 'warning'
+              service: 'expo-attention-server'
+              exported_service: 'user'
+              outcome: 'failure'
+            exp_annotations:
+              summary: 'user: downstream failures above 0.1/s for 2 minutes'
+          - exp_labels:
+              severity: 'warning'
+              service: 'expo-attention-server'
+              exported_service: 'expo'
+              outcome: 'failure'
+            exp_annotations:
+              summary: 'expo: downstream failures above 0.1/s for 2 minutes'
+          - exp_labels:
+              severity: 'warning'
+              service: 'expo-attention-server'
+              exported_service: 'application'
+              outcome: 'failure'
+            exp_annotations:
+              summary: 'application: downstream failures above 0.1/s for 2 minutes'
+      - eval_time: '20m'
+        alertname: 'AttendanceGuardLockContention'
+        exp_alerts:
+          - exp_labels:
+              severity: 'warning'
+              service: 'expo-attention-server'
+              instance: 'a'
+              kind: 'scan'
+            exp_annotations:
+              summary: 'a scan: guard lock p95 above 0.5 seconds for 5 minutes'
+      - eval_time: '20m'
+        alertname: 'AttendanceQrPendingLong'
+        exp_alerts:
+          - exp_labels:
+              severity: 'warning'
+              service: 'expo-attention-server'
+            exp_annotations:
+              summary: 'Attendance QR entries remain pending for 15 minutes'
+      - eval_time: '30s'
+        alertname: 'AttendanceCircuitBreakerOpen'
+        exp_alerts: []
+      - eval_time: '30s'
+        alertname: 'AttendanceScanHigh5xxRate'
+        exp_alerts: []
+      - eval_time: '30s'
+        alertname: 'AttendanceScanHighLatency'
+        exp_alerts: []
+      - eval_time: '30s'
+        alertname: 'AttendanceDownstreamFailures'
+        exp_alerts: []
+      - eval_time: '30s'
+        alertname: 'AttendanceGuardLockContention'
+        exp_alerts: []
+      - eval_time: '30s'
+        alertname: 'AttendanceQrPendingLong'
+        exp_alerts: []
+      - eval_time: '14m45s'
+        alertname: 'AttendanceQrPendingLong'
+        exp_alerts: []
+    name: 'sustained faults and independent names / outcomes'
+  - interval: '15s'
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",status="200"}'
+        values: '0+28.5x100'
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",status="503"}'
+        values: '0+1.5x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",le="2"}'
+        values: '0+28.5x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",le="+Inf"}'
+        values: '0+30x100'
+      - series: 'attendance_guard_lock_wait_seconds_count{service="expo-attention-server",instance="a",kind="scan"}'
+        values: '0+30x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",instance="a",kind="scan",le="0.5"}'
+        values: '0+28.5x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",instance="a",kind="scan",le="+Inf"}'
+        values: '0+30x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="user",outcome="failure"}'
+        values: '0+1.5x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="expo",outcome="failure"}'
+        values: '0+1.5x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="application",outcome="failure"}'
+        values: '0+1.5x100'
+    alert_rule_test:
+      - eval_time: '20m'
+        alertname: 'AttendanceCircuitBreakerOpen'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHigh5xxRate'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHighLatency'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceDownstreamFailures'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceGuardLockContention'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceQrPendingLong'
+        exp_alerts: []
+    name: 'exact thresholds'
+  - interval: '15s'
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",status="200"}'
+        values: '0x100'
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",status="503"}'
+        values: '0x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",le="3"}'
+        values: '0x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",le="+Inf"}'
+        values: '0x100'
+      - series: 'attendance_guard_lock_wait_seconds_count{service="expo-attention-server",instance="a",kind="scan"}'
+        values: '0x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",instance="a",kind="scan",le="1"}'
+        values: '0x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",instance="a",kind="scan",le="+Inf"}'
+        values: '0x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="user",outcome="failure"}'
+        values: '0x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="expo",outcome="failure"}'
+        values: '0x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="application",outcome="failure"}'
+        values: '0x100'
+    alert_rule_test:
+      - eval_time: '20m'
+        alertname: 'AttendanceCircuitBreakerOpen'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHigh5xxRate'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHighLatency'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceDownstreamFailures'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceGuardLockContention'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceQrPendingLong'
+        exp_alerts: []
+    name: 'idle counters'
+    promql_expr_test:
+      - expr: 'attendance:scan_errors_5xx:ratio5m'
+        eval_time: '5m'
+        exp_samples:
+          - labels: 'attendance:scan_errors_5xx:ratio5m{service="expo-attention-server",uri="/attendance/{expoId}"}'
+            value: 0
+  - interval: '15s'
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",status="200"}'
+        values: '0+0.6x100'
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",status="503"}'
+        values: '0+0.15x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",le="3"}'
+        values: '0+0.7125x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",le="+Inf"}'
+        values: '0+0.75x100'
+      - series: 'attendance_guard_lock_wait_seconds_count{service="expo-attention-server",instance="a",kind="scan"}'
+        values: '0+0.75x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",instance="a",kind="scan",le="1"}'
+        values: '0+0.7125x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",instance="a",kind="scan",le="+Inf"}'
+        values: '0+0.75x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="user",outcome="failure"}'
+        values: '0+0.15x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="expo",outcome="failure"}'
+        values: '0+0.15x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="application",outcome="failure"}'
+        values: '0+0.15x100'
+    alert_rule_test:
+      - eval_time: '20m'
+        alertname: 'AttendanceCircuitBreakerOpen'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHigh5xxRate'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHighLatency'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceDownstreamFailures'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceGuardLockContention'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceQrPendingLong'
+        exp_alerts: []
+    name: 'low scan and lock traffic'
+  - interval: '15s'
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="other-service",method="PATCH",uri="/attendance/{expoId}",status="200"}'
+        values: '0+27x100'
+      - series: 'http_server_requests_seconds_count{service="other-service",method="PATCH",uri="/attendance/{expoId}",status="503"}'
+        values: '0+3x100'
+      - series: 'http_server_requests_seconds_bucket{service="other-service",method="PATCH",uri="/attendance/{expoId}",le="3"}'
+        values: '0+28.5x100'
+      - series: 'http_server_requests_seconds_bucket{service="other-service",method="PATCH",uri="/attendance/{expoId}",le="+Inf"}'
+        values: '0+30x100'
+      - series: 'attendance_guard_lock_wait_seconds_count{service="other-service",instance="a",kind="scan"}'
+        values: '0+30x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="other-service",instance="a",kind="scan",le="1"}'
+        values: '0+28.5x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="other-service",instance="a",kind="scan",le="+Inf"}'
+        values: '0+30x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="other-service",exported_service="user",outcome="failure"}'
+        values: '0+3x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="other-service",exported_service="expo",outcome="failure"}'
+        values: '0+3x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="other-service",exported_service="application",outcome="failure"}'
+        values: '0+3x100'
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/standard/{programId}",status="200"}'
+        values: '0+27x100'
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/standard/{programId}",status="503"}'
+        values: '0+3x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/standard/{programId}",le="3"}'
+        values: '0+28.5x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/standard/{programId}",le="+Inf"}'
+        values: '0+30x100'
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="GET",uri="/attendance/{expoId}",status="200"}'
+        values: '0+27x100'
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="GET",uri="/attendance/{expoId}",status="503"}'
+        values: '0+3x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="GET",uri="/attendance/{expoId}",le="3"}'
+        values: '0+28.5x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="GET",uri="/attendance/{expoId}",le="+Inf"}'
+        values: '0+30x100'
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="GET",uri="/attendance/qr/{expoId}",status="200"}'
+        values: '0+27x100'
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="GET",uri="/attendance/qr/{expoId}",status="503"}'
+        values: '0+3x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="GET",uri="/attendance/qr/{expoId}",le="3"}'
+        values: '0+28.5x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="GET",uri="/attendance/qr/{expoId}",le="+Inf"}'
+        values: '0+30x100'
+    alert_rule_test:
+      - eval_time: '20m'
+        alertname: 'AttendanceCircuitBreakerOpen'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHigh5xxRate'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHighLatency'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceDownstreamFailures'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceGuardLockContention'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceQrPendingLong'
+        exp_alerts: []
+    name: 'foreign service and program routes'
+  - interval: '15s'
+    input_series: []
+    alert_rule_test:
+      - eval_time: '20m'
+        alertname: 'AttendanceCircuitBreakerOpen'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHigh5xxRate'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHighLatency'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceDownstreamFailures'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceGuardLockContention'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceQrPendingLong'
+        exp_alerts: []
+    name: 'missing metrics'
+    promql_expr_test:
+      - expr: 'attendance:scan_requests:rate5m'
+        eval_time: '5m'
+        exp_samples: []
+      - expr: 'attendance:scan_errors_5xx:ratio5m'
+        eval_time: '5m'
+        exp_samples: []
+      - expr: 'attendance:guard_lock_wait_p95:5m'
+        eval_time: '5m'
+        exp_samples: []
+  - interval: '15s'
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",status="200"}'
+        values: '0+30x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",le="0.1"}'
+        values: '0+28.5x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",le="+Inf"}'
+        values: '0+30x100'
+      - series: 'attendance_guard_lock_wait_seconds_count{service="expo-attention-server",instance="a",kind="scan"}'
+        values: '0+30x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",instance="a",kind="scan",le="0.01"}'
+        values: '0+28.5x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",instance="a",kind="scan",le="+Inf"}'
+        values: '0+30x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="user",outcome="failure"}'
+        values: '0x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="expo",outcome="failure"}'
+        values: '0x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="application",outcome="failure"}'
+        values: '0x100'
+    alert_rule_test:
+      - eval_time: '20m'
+        alertname: 'AttendanceCircuitBreakerOpen'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHigh5xxRate'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHighLatency'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceDownstreamFailures'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceGuardLockContention'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceQrPendingLong'
+        exp_alerts: []
+    promql_expr_test:
+      - expr: 'attendance:scan_errors_5xx:ratio5m'
+        eval_time: '5m'
+        exp_samples:
+          - labels: 'attendance:scan_errors_5xx:ratio5m{service="expo-attention-server",uri="/attendance/{expoId}"}'
+            value: 0
+    name: 'no 5xx series'
+  - interval: '15s'
+    input_series:
+      - series: 'attendance_circuit_breaker_state{service="expo-attention-server",instance="a",name="user"}'
+        values: '1x2 2x98'
+      - series: 'attendance_qr_entry_pending{service="expo-attention-server"}'
+        values: '3x55 0x45'
+    alert_rule_test:
+      - eval_time: '20m'
+        alertname: 'AttendanceCircuitBreakerOpen'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHigh5xxRate'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHighLatency'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceDownstreamFailures'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceGuardLockContention'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceQrPendingLong'
+        exp_alerts: []
+    name: 'open and pending reset'
+  - name: 'unknown pending and insufficient circuit rates'
+    interval: '15s'
+    input_series:
+      - series: 'attendance_qr_entry_pending{service="expo-attention-server"}'
+        values: 'NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN'
+      - series: 'attendance_circuit_breaker_failure_rate{service="expo-attention-server",name="user"}'
+        values: '-1x100'
+    alert_rule_test:
+      - eval_time: '20m'
+        alertname: 'AttendanceQrPendingLong'
+        exp_alerts: []
+    promql_expr_test:
+      - expr: 'attendance_circuit_breaker_failure_rate{service="expo-attention-server"} >= 0'
+        eval_time: '5m'
+        exp_samples: []
+  - interval: '15s'
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",status="200"}'
+        values: '0x100'
+      - series: 'http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",status="503"}'
+        values: '0+1.5x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",le="3"}'
+        values: '0+1.425x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri="/attendance/{expoId}",le="+Inf"}'
+        values: '0+1.5x100'
+      - series: 'attendance_guard_lock_wait_seconds_count{service="expo-attention-server",instance="a",kind="scan"}'
+        values: '0+1.5x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",instance="a",kind="scan",le="1"}'
+        values: '0+1.425x100'
+      - series: 'attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",instance="a",kind="scan",le="+Inf"}'
+        values: '0+1.5x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="user",outcome="failure"}'
+        values: '0+0.3x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="expo",outcome="failure"}'
+        values: '0+0.3x100'
+      - series: 'attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service="application",outcome="failure"}'
+        values: '0+0.3x100'
+    alert_rule_test:
+      - eval_time: '20m'
+        alertname: 'AttendanceCircuitBreakerOpen'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHigh5xxRate'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceScanHighLatency'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceDownstreamFailures'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceGuardLockContention'
+        exp_alerts: []
+      - eval_time: '20m'
+        alertname: 'AttendanceQrPendingLong'
+        exp_alerts: []
+    name: 'exact scan and lock traffic floor'
