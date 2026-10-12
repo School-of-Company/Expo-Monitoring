@@ -50,11 +50,13 @@ Alertmanager는 아직 없어서 Prometheus UI의 Alerts 탭에서만 확인합�
 - `ServiceDown`: Eureka에 있는데 scrape가 1분간 실패. 크래시한 인스턴스를 Eureka가 evict하면 target이 사라져 알림도 해소되므로, 장애 기록으로 쓰지 마세요.
 - `ServiceHigh5xxRate`: 서비스별 5xx > 5% (5분), 요청률 0.1 req/s 미만이면 제외
 - Gateway 전용: `GatewayUpstream502Rate`, `GatewayNoHealthyInstances`, `GatewayEurekaPollFailing`. Expo-Gateway에서 가져왔고, `GatewayDown`·`GatewayHigh5xxRate`는 공통 룰이 대신합니다.
+- Attendance 전용: 회로 열림, 입구 5xx/p95, downstream failure, guard lock p95, QR pending. [계약·초기 임계값 근거·운영 미확인](docs/attendance-monitoring.md)을 참고하세요. 임계값은 운영 합의 전 제안입니다.
 
 ## 대시보드
 
 - **MSA Service Overview**: `$service` 변수로 전환하는 RED + 인스턴스 + 런타임(JVM/Node)
 - **Expo Gateway**: Gateway 전용 (Expo-Gateway 원본에서 가져왔으며, 공유 스택의 런타임 쿼리에는 `service="expo-gateway"` 필터를 추가했습니다. 원본 갱신 시 이 필터를 유지하세요)
+- **Expo Attendance**: 입구 스캔 RED, name별 회로, 대상/outcome별 호출, kind별 락 대기, QR backlog. 실제 Eureka 이름은 `expo-attention-server`입니다.
 
 ## 검증
 
@@ -64,7 +66,7 @@ bash dev/validate-prometheus.sh
 
 설정 검사에는 `/etc/prometheus/rules` 마운트가 필요합니다. 빠지면 설정의 절대 경로 glob이 룰 파일을 찾지 못해도 검사가 통과할 수 있습니다.
 
-데모를 실행한 뒤 실제 Prometheus의 자동 대상 추가·삭제, opt-in 제외, 공통 RED와 Grafana의 두 대시보드 쿼리를 검사합니다. 기존 Grafana 볼륨을 사용한다면 `GRAFANA_ADMIN_PASSWORD`는 현재 관리자 비밀번호와 같아야 합니다.
+데모를 실행한 뒤 실제 Prometheus의 자동 대상 추가·삭제, opt-in 제외, 공통 RED와 Grafana의 세 대시보드 쿼리를 검사합니다. 기존 Grafana 볼륨을 사용한다면 `GRAFANA_ADMIN_PASSWORD`는 현재 관리자 비밀번호와 같아야 합니다.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.demo.yml exec -T -e GRAFANA_ADMIN_PASSWORD fake-services node /app/verify-demo.mjs

@@ -1,0 +1,64 @@
+groups:
+  - name: attendance
+    rules:
+      # Only entrance scans; program attendance and internal APIs are excluded.
+      - record: attendance:scan_requests:rate5m
+        expr: sum by (service, uri) (rate(http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri=~"/attendance/\\{expoId\\}|/attendance/qr/\\{expoId\\}"}[5m]))
+      - record: attendance:scan_errors_5xx:ratio5m
+        expr: |
+          (sum by (service, uri) (rate(http_server_requests_seconds_count{service="expo-attention-server",method="PATCH",uri=~"/attendance/\\{expoId\\}|/attendance/qr/\\{expoId\\}",status=~"5.."}[5m]))
+            or 0 * attendance:scan_requests:rate5m)
+          / clamp_min(attendance:scan_requests:rate5m, 1e-12)
+      - record: attendance:scan_latency_p95:5m
+        expr: histogram_quantile(0.95, sum by (service, uri, le) (rate(http_server_requests_seconds_bucket{service="expo-attention-server",method="PATCH",uri=~"/attendance/\\{expoId\\}|/attendance/qr/\\{expoId\\}"}[5m])))
+      # honor_labels=false keeps Eureka identity in service; meter service becomes exported_service.
+      - record: attendance:downstream_calls:rate5m
+        expr: sum by (service, exported_service, outcome) (rate(attendance_downstream_calls_seconds_count{service="expo-attention-server",exported_service=~"user|expo|application"}[5m]))
+      - record: attendance:guard_lock_wait_p95:5m
+        expr: histogram_quantile(0.95, sum by (service, instance, kind, le) (rate(attendance_guard_lock_wait_seconds_bucket{service="expo-attention-server",kind=~"scan|cancel"}[5m])))
+
+      - alert: AttendanceCircuitBreakerOpen
+        expr: attendance_circuit_breaker_state{service="expo-attention-server"} == 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} {{ $labels.name }}: circuit open for 1 minute"
+      - alert: AttendanceScanHigh5xxRate
+        expr: attendance:scan_errors_5xx:ratio5m > 0.05 and attendance:scan_requests:rate5m > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.uri }}: entrance scan 5xx above 5% for 5 minutes"
+      - alert: AttendanceScanHighLatency
+        expr: attendance:scan_latency_p95:5m > 2 and attendance:scan_requests:rate5m > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.uri }}: entrance scan p95 above 2 seconds for 5 minutes"
+      - alert: AttendanceDownstreamFailures
+        expr: attendance:downstream_calls:rate5m{outcome="failure"} > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.exported_service }}: downstream failures above 0.1/s for 2 minutes"
+      - alert: AttendanceGuardLockContention
+        expr: |
+          attendance:guard_lock_wait_p95:5m > 0.5
+          and sum by (service, instance, kind) (rate(attendance_guard_lock_wait_seconds_count{service="expo-attention-server",kind=~"scan|cancel"}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} {{ $labels.kind }}: guard lock p95 above 0.5 seconds for 5 minutes"
+      - alert: AttendanceQrPendingLong
+        # Each instance counts the same DB backlog: do not sum duplicate gauges.
+        expr: max by (service) (attendance_qr_entry_pending{service="expo-attention-server"}) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Attendance QR entries remain pending for 15 minutes"

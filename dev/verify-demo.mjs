@@ -38,10 +38,12 @@ async function query(expression) {
 
 await eventually('Eureka opt-in, paths, healthy scrapes and exclusions', async () => {
   const { activeTargets: active, droppedTargets: dropped } = (await json(`${prometheus}/api/v1/targets`)).data;
-  assert.deepEqual(active.map((target) => target.labels.instance).sort(), ['application-1', 'form-1', 'form-2', 'gateway-1']);
+  assert.deepEqual(active.map((target) => target.labels.instance).sort(), ['application-1', 'attendance-1', 'form-1', 'form-2', 'gateway-1']);
   assert(active.every((target) => target.health === 'up'));
   assert(active.find((target) => target.labels.instance === 'form-1').scrapeUrl.endsWith('/actuator/prometheus'));
   assert(active.find((target) => target.labels.instance === 'gateway-1').scrapeUrl.endsWith('/metrics'));
+  assert.equal(active.find((target) => target.labels.instance === 'attendance-1').labels.service, 'expo-attention-server');
+  assert(active.find((target) => target.labels.instance === 'attendance-1').scrapeUrl.endsWith(':9108/actuator/prometheus'));
   assert.deepEqual(dropped.map((target) => target.discoveredLabels.__meta_eureka_app_instance_id).sort(), ['no-opt-in', 'no-port', 'report-1']);
 });
 
@@ -49,7 +51,7 @@ let removalFailure;
 try {
   assert.equal((await fetch('http://fake-services:8761/demo/form-2/hide', { method: 'POST', signal: AbortSignal.timeout(5000) })).status, 204);
   await eventually('instance removal without Prometheus reload', async () => {
-    assert.deepEqual((await targets()).map((target) => target.labels.instance).sort(), ['application-1', 'form-1', 'gateway-1']);
+    assert.deepEqual((await targets()).map((target) => target.labels.instance).sort(), ['application-1', 'attendance-1', 'form-1', 'gateway-1']);
   });
 } catch (error) {
   removalFailure = error;
@@ -64,14 +66,14 @@ try {
 }
 await eventually('instance addition without Prometheus reload', async () => {
   const active = await targets();
-  assert.deepEqual(active.map((target) => target.labels.instance).sort(), ['application-1', 'form-1', 'form-2', 'gateway-1']);
+  assert.deepEqual(active.map((target) => target.labels.instance).sort(), ['application-1', 'attendance-1', 'form-1', 'form-2', 'gateway-1']);
   assert(active.every((target) => target.health === 'up'));
 });
 
 await eventually('common RED records and zero-error gateway', async () => {
   for (const record of ['service:http_requests:rate1m', 'service:http_errors_5xx:ratio1m', 'service:http_latency_p95:5m']) {
     const samples = await query(record);
-    assert.deepEqual(samples.map((sample) => sample.metric.service).sort(), ['expo-application-server', 'expo-form-server', 'expo-gateway']);
+    assert.deepEqual(samples.map((sample) => sample.metric.service).sort(), ['expo-application-server', 'expo-attention-server', 'expo-form-server', 'expo-gateway']);
     assert(samples.every((sample) => Number.isFinite(Number(sample.value[1]))));
   }
   assert.equal((await query('service:http_errors_5xx:ratio1m{service="expo-gateway"}'))[0].value[1], '0');
@@ -79,17 +81,33 @@ await eventually('common RED records and zero-error gateway', async () => {
   assert((await query('gateway_http_requests_total{service="expo-gateway"}')).length > 0);
 });
 
-await eventually('all three recording and five alert rules loaded', async () => {
+await eventually('all eight recording and eleven alert rules loaded', async () => {
   const rules = (await json(`${prometheus}/api/v1/rules`)).data.groups.flatMap((group) => group.rules);
-  assert.equal(rules.length, 8);
+  assert.equal(rules.length, 19);
   assert(rules.every((rule) => rule.health === 'ok'));
+});
+
+await eventually('Attendance label collision, outcome separation and healthy rule state', async () => {
+  const samples = await query('attendance_downstream_calls_seconds_count{service="expo-attention-server"}');
+  assert.equal(samples.length, 15);
+  assert.deepEqual([...new Set(samples.map((sample) => sample.metric.exported_service))].sort(), ['application', 'expo', 'user']);
+  assert.deepEqual([...new Set(samples.map((sample) => sample.metric.outcome))].sort(), ['circuit_open', 'conflict', 'failure', 'not_found', 'success']);
+  assert(samples.every((sample) => sample.metric.instance === 'attendance-1'));
+  const rates = await query('attendance:downstream_calls:rate5m');
+  assert.equal(rates.length, 15);
+  assert(rates.filter((sample) => sample.metric.outcome !== 'success').every((sample) => Number(sample.value[1]) === 0));
+  const scanErrors = await query('attendance:scan_errors_5xx:ratio5m');
+  assert.deepEqual(scanErrors.map((sample) => sample.metric.uri).sort(), ['/attendance/qr/{expoId}', '/attendance/{expoId}']);
+  assert(scanErrors.every((sample) => sample.value[1] === '0'));
+  const rules = (await json(`${prometheus}/api/v1/rules`)).data.groups.find((group) => group.name === 'attendance').rules;
+  assert(rules.filter((rule) => rule.type === 'alerting').every((rule) => rule.state === 'inactive'));
 });
 
 await eventually('Grafana provisioned dashboards and datasource', async () => {
   const health = await json(`${grafana}/api/health`);
   assert.equal(health.database, 'ok');
   const dashboards = await json(`${grafana}/api/search?type=dash-db`, { Authorization: authorization });
-  assert.equal(dashboards.length, 2);
+  assert.equal(dashboards.length, 3);
   for (const dashboard of dashboards) {
     const model = (await json(`${grafana}/api/dashboards/uid/${dashboard.uid}`, { Authorization: authorization })).dashboard;
     for (const target of model.panels.flatMap((panel) => panel.targets ?? [])) {
@@ -97,6 +115,10 @@ await eventually('Grafana provisioned dashboards and datasource', async () => {
       const expression = target.expr.replaceAll('$service', '.*').replaceAll('$app', '.*');
       const response = await json(`${grafana}/api/datasources/proxy/uid/prometheus/api/v1/query?query=${encodeURIComponent(expression)}`, { Authorization: authorization });
       assert.equal(response.status, 'success');
+      if (model.title === 'Expo Attendance') {
+        assert(response.data.result.length > 0, expression);
+        assert(response.data.result.every((sample) => Number.isFinite(Number(sample.value[1]))), expression);
+      }
       if (model.title === 'Expo Gateway' && /gateway_http_requests_total\{status="502"\}/.test(expression)) {
         assert(response.data.result.length > 0, expression);
         assert(response.data.result.every((sample) => sample.value[1] === '0'), expression);
