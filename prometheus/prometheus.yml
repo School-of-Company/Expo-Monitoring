@@ -8,6 +8,7 @@ rule_files:
 # No Alertmanager yet: alerts are visible in the Prometheus UI (Alerts tab).
 scrape_configs:
   - job_name: eureka-services
+    honor_labels: false
     eureka_sd_configs:
       - server: http://eureka:8761/eureka
         refresh_interval: 30s
