@@ -13,28 +13,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  inspect:
-    if: github.event_name == 'workflow_dispatch' && github.ref_name != 'main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure SSH for read-only inspection
-        env:
-          SSH_KEY: ${{ secrets.EXPO_SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.EXPO_SSH_KNOWN_HOSTS }}
-        run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-      - name: Inspect monitoring targets and listeners
-        env:
-          HOST: ${{ vars.EXPO_SSH_HOST }}
-          PORT: ${{ vars.EXPO_SSH_PORT }}
-          USER: ${{ vars.EXPO_SSH_USER }}
-        run: ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$PORT" "$USER@$HOST" 'node --input-type=module' < dev/inspect-server.mjs
-
   deploy:
     if: github.ref_name == 'main'
     runs-on: ubuntu-latest
@@ -47,11 +25,7 @@ jobs:
 
       # README 의 검증 절차와 같다. 설정·룰이 깨져 있으면 업로드 전에 멈춘다.
       - name: Validate Prometheus config and rules
-        run: |
-          promtool() { docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p:ro" -v "$PWD/prometheus/rules:/etc/prometheus/rules:ro" prom/prometheus:v2.55.1 "$@"; }
-          promtool check config /p/prometheus.yml
-          promtool check rules /p/rules/recording.yml /p/rules/alerts.yml
-          promtool test rules /p/tests/rules.test.yml
+        run: bash dev/validate-prometheus.sh
 
       - name: Package
         run: tar czf release.tar.gz prometheus grafana

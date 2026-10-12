@@ -16,6 +16,13 @@ docker compose down         # -v 금지 (대시보드·시계열 볼륨 보존)
 - 데모는 네트워크 별칭 `eureka`와 컨테이너의 실제 IP를 사용합니다. 고정 서브넷·IP와 `EUREKA_HOST` 설정은 필요하지 않습니다.
 - 새 서버의 환경 변수와 배포 점검은 [배포 환경 안내](docs/deployment-environment.md)를 참고하세요.
 
+기존 고정 서브넷(172.28.0.0/24)으로 Compose를 실행한 호스트는 업데이트 후 기존 네트워크를 먼저 제거하고 다시 시작합니다. 아래 `down`은 데이터 볼륨을 보존합니다. `-v`를 추가하지 마세요. 데모를 실행 중이었다면 두 명령 모두 `-f docker-compose.yml -f docker-compose.demo.yml`을 함께 사용합니다.
+
+```bash
+docker compose down
+docker compose up -d
+```
+
 ## 서비스가 수집되려면 (Eureka metadata)
 
 | 키 | 예시 | 의미 |
@@ -52,9 +59,7 @@ Alertmanager는 아직 없어서 Prometheus UI의 Alerts 탭에서만 확인합�
 ## 검증
 
 ```bash
-docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p:ro" -v "$PWD/prometheus/rules:/etc/prometheus/rules:ro" prom/prometheus:v2.55.1 check config /p/prometheus.yml
-docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p:ro" prom/prometheus:v2.55.1 check rules /p/rules/recording.yml /p/rules/alerts.yml
-docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p:ro" prom/prometheus:v2.55.1 test rules /p/tests/rules.test.yml
+bash dev/validate-prometheus.sh
 ```
 
 설정 검사에는 `/etc/prometheus/rules` 마운트가 필요합니다. 빠지면 설정의 절대 경로 glob이 룰 파일을 찾지 못해도 검사가 통과할 수 있습니다.

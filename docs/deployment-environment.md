@@ -30,7 +30,9 @@ GitHub 워크플로는 `prometheus/`, `grafana/`만 묶어서 업로드합니다
 | Repository secret | `EXPO_SSH_KEY` | SSH 개인키 |
 | Repository secret | `EXPO_SSH_KNOWN_HOSTS` | 검증된 서버 공개키 목록 |
 
-`main` push 또는 `main`의 수동 workflow dispatch만 배포합니다. `develop` push는 검증 CI만 실행합니다. `main` 이외 브랜치에서 `Deploy`를 수동 실행하면 등록된 SSH 설정으로 읽기 전용 점검만 수행합니다. 서버에서 Node의 `fetch`와 `ss` 명령이 필요하며, 서버 포트 범위 26111~26129에서 Prometheus/Grafana·정상 Gateway 수집·loopback 바인딩을 검사합니다. 업로드 위치는 `app/monitoring/incoming/<release>.tar.gz`이고 서버의 `bin/deploy.sh monitoring prod <release>`를 호출합니다. `prod`는 단일 환경 스크립트의 인자 호환용입니다.
+`main` push 또는 `main`의 수동 workflow dispatch만 배포합니다. `develop` push는 검증 CI만 실행합니다. `main` 이외 브랜치에서 `Deploy`를 수동 실행하면 배포 job을 건너뜁니다. 업로드 위치는 `app/monitoring/incoming/<release>.tar.gz`이고 서버의 `bin/deploy.sh monitoring prod <release>`를 호출합니다. `prod`는 단일 환경 스크립트의 인자 호환용입니다.
+
+운영 점검은 서버의 제한된 조회 권한으로 수행해야 합니다. 기능 브랜치의 스크립트를 운영 배포 SSH 키로 실행하는 job은 제공하지 않습니다. 과거 점검 실행 결과는 아래 기록으로 남깁니다.
 
 ## Metrics collection and release checks
 
