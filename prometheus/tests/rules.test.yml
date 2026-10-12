@@ -164,6 +164,31 @@ tests:
               summary: "Background Eureka poll failing for demo"
               description: gateway_upstream_healthy_instances is dropped while polls fail, so it is not reporting.
 
+  # Missing 502 series and idle apps both have zero ratio and no alert.
+  - interval: 15s
+    input_series:
+      - series: 'gateway_http_requests_total{service="expo-gateway",app="healthy",status="200"}'
+        values: '0+30x40'
+      - series: 'gateway_http_requests_total{service="expo-gateway",app="idle",status="200"}'
+        values: '0x40'
+      - series: 'gateway_http_requests_total{service="expo-gateway",app="idle",status="502"}'
+        values: '0x40'
+    promql_expr_test:
+      - expr: |
+          (sum by (app) (rate(gateway_http_requests_total{status="502"}[1m]))
+            or 0 * sum by (app) (rate(gateway_http_requests_total[1m])))
+          / clamp_min(sum by (app) (rate(gateway_http_requests_total[1m])), 1e-12)
+        eval_time: 5m
+        exp_samples:
+          - labels: '{app="healthy"}'
+            value: 0
+          - labels: '{app="idle"}'
+            value: 0
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: GatewayUpstream502Rate
+        exp_alerts: []
+
   # An empty scrape must not create a fabricated service or alert.
   - interval: 15s
     promql_expr_test:

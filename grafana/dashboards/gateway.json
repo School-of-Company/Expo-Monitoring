@@ -829,7 +829,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (app) (rate(gateway_http_requests_total{status=\"502\"}[1m])) / sum by (app) (rate(gateway_http_requests_total[1m]))",
+          "expr": "(sum by (app) (rate(gateway_http_requests_total{status=\"502\"}[1m])) or 0 * sum by (app) (rate(gateway_http_requests_total[1m]))) / clamp_min(sum by (app) (rate(gateway_http_requests_total[1m])), 1e-12)",
           "legendFormat": "{{app}}",
           "refId": "A",
           "range": true
