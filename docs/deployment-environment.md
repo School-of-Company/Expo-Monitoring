@@ -30,7 +30,7 @@ GitHub 워크플로는 `prometheus/`, `grafana/`만 묶어서 업로드합니다
 | Repository secret | `EXPO_SSH_KEY` | SSH 개인키 |
 | Repository secret | `EXPO_SSH_KNOWN_HOSTS` | 검증된 서버 공개키 목록 |
 
-`main` push 또는 `main`의 수동 workflow dispatch만 배포합니다. `develop`은 검증 CI만 실행합니다. 업로드 위치는 `app/monitoring/incoming/<release>.tar.gz`이고 서버의 `bin/deploy.sh monitoring prod <release>`를 호출합니다. `prod`는 단일 환경 스크립트의 인자 호환용입니다.
+`main` push 또는 `main`의 수동 workflow dispatch만 배포합니다. `develop` push는 검증 CI만 실행합니다. `main` 이외 브랜치에서 `Deploy`를 수동 실행하면 등록된 SSH 설정으로 읽기 전용 점검만 수행합니다. 서버에서 Node의 `fetch`와 `ss` 명령이 필요하며, 서버 포트 범위 26111~26129에서 Prometheus/Grafana·정상 Gateway 수집·loopback 바인딩을 검사합니다. 업로드 위치는 `app/monitoring/incoming/<release>.tar.gz`이고 서버의 `bin/deploy.sh monitoring prod <release>`를 호출합니다. `prod`는 단일 환경 스크립트의 인자 호환용입니다.
 
 ## Metrics collection and release checks
 
@@ -48,4 +48,10 @@ GitHub 배포 변수 3개와 Secret 2개의 등록 여부를 확인했습니다.
 
 로컬 Prometheus v2.55.1과 Grafana 11.3.0 데모에서 정상 대상 4개, 제외 대상 3개, 인스턴스 제거·추가 자동 반영, 공통 RED 기록, 룰 8개 로드, 두 대시보드의 37개 쿼리를 확인했습니다. Gateway 런타임 쿼리는 다른 서비스의 런타임 지표가 함께 있어도 Gateway 시계열만 반환했습니다. 실제 컨테이너의 Prometheus/Grafana 공개 바인딩은 loopback이고 가짜 서비스의 메트릭 포트는 공개하지 않습니다. 이 결과는 운영 서버 검증을 대체하지 않습니다.
 
-운영 서버에 비대화형 SSH 읽기 접근을 시도했지만 `Host key verification failed`로 중단되었습니다. 호스트키 검증을 우회하지 않았습니다. 따라서 운영/스테이징 targets API, 실제 listener, 방화벽, 관리자 비밀번호, 데이터 보존과 롤백은 미검증입니다. Monitoring #3의 운영 수집·방화벽 항목은 이 확인이 끝날 때까지 완료로 간주하지 않습니다.
+로컬 SSH는 호스트키 검증 실패로 접속하지 못했지만, GitHub Actions에 등록된 SSH 키·known hosts를 사용한 [읽기 전용 운영 점검](https://github.com/School-of-Company/Expo-Monitoring/actions/runs/38192399967)이 성공했습니다. 호스트키 검증을 우회하거나 서버를 배포하지 않았습니다.
+
+2026-10-12 01:34 UTC 기준 Prometheus는 `127.0.0.1:26114`, Grafana는 `127.0.0.1:26115`에서 실행 중입니다. Grafana DB health는 `ok`입니다. Prometheus targets API에 Gateway, Attention, Report, Expo, User, Application 6개 서비스가 있고 모두 `up`입니다. Gateway 메트릭은 `127.0.0.1:26113`, 나머지 수집 대상은 `127.0.0.1:26123`~`26127`의 해당 서비스 포트를 사용합니다. 이 포트들의 실제 listener는 모두 IPv4 또는 IPv4-mapped IPv6 loopback입니다.
+
+수집은 같은 호스트의 loopback에서 이루어지므로 컨테이너 간 방화벽 허용에 의존하지 않으며, 확인한 UI·메트릭 listener는 공용 네트워크 인터페이스에 바인딩하지 않습니다. OS 방화벽 규칙 전체를 조회하거나 외부 네트워크 침투 검사를 수행하지는 않았습니다. 서버가 단일 환경이므로 이번 검증은 이 운영 환경을 대상으로 하며 별도 스테이징 검증 결과는 없습니다.
+
+Form·Notification 등은 이 확인 시점의 수집 대상 6개 목록에 없습니다. 서비스별 metadata와 listener 적용·배포 여부는 해당 서비스 담당 범위에서 확인해야 합니다. 운영 관리자 비밀번호, 데이터 보존·롤백과 현재 배포 SHA는 확인하지 않았습니다. PR의 룰·대시보드 수정은 아직 운영에 배포하지 않았습니다.
