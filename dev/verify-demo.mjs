@@ -37,25 +37,35 @@ async function query(expression) {
 }
 
 await eventually('Eureka opt-in, paths, healthy scrapes and exclusions', async () => {
-  const active = await targets();
+  const { activeTargets: active, droppedTargets: dropped } = (await json(`${prometheus}/api/v1/targets`)).data;
   assert.deepEqual(active.map((target) => target.labels.instance).sort(), ['application-1', 'form-1', 'form-2', 'gateway-1']);
   assert(active.every((target) => target.health === 'up'));
   assert(active.find((target) => target.labels.instance === 'form-1').scrapeUrl.endsWith('/actuator/prometheus'));
   assert(active.find((target) => target.labels.instance === 'gateway-1').scrapeUrl.endsWith('/metrics'));
-  const dropped = (await json(`${prometheus}/api/v1/targets`)).data.droppedTargets;
   assert.deepEqual(dropped.map((target) => target.discoveredLabels.__meta_eureka_app_instance_id).sort(), ['no-opt-in', 'no-port', 'report-1']);
 });
 
+let removalFailure;
 try {
   assert.equal((await fetch('http://fake-services:8761/demo/form-2/hide', { method: 'POST', signal: AbortSignal.timeout(5000) })).status, 204);
   await eventually('instance removal without Prometheus reload', async () => {
     assert.deepEqual((await targets()).map((target) => target.labels.instance).sort(), ['application-1', 'form-1', 'gateway-1']);
   });
+} catch (error) {
+  removalFailure = error;
+  throw error;
 } finally {
-  assert.equal((await fetch('http://fake-services:8761/demo/form-2/show', { method: 'POST', signal: AbortSignal.timeout(5000) })).status, 204);
+  try {
+    assert.equal((await fetch('http://fake-services:8761/demo/form-2/show', { method: 'POST', signal: AbortSignal.timeout(5000) })).status, 204);
+  } catch (error) {
+    if (removalFailure !== undefined) throw new AggregateError([removalFailure, error], 'Instance removal and restoration both failed');
+    throw error;
+  }
 }
 await eventually('instance addition without Prometheus reload', async () => {
-  assert.equal((await targets()).length, 4);
+  const active = await targets();
+  assert.deepEqual(active.map((target) => target.labels.instance).sort(), ['application-1', 'form-1', 'form-2', 'gateway-1']);
+  assert(active.every((target) => target.health === 'up'));
 });
 
 await eventually('common RED records and zero-error gateway', async () => {
@@ -69,10 +79,11 @@ await eventually('common RED records and zero-error gateway', async () => {
   assert((await query('gateway_http_requests_total{service="expo-gateway"}')).length > 0);
 });
 
-const rules = (await json(`${prometheus}/api/v1/rules`)).data.groups.flatMap((group) => group.rules);
-assert.equal(rules.length, 8);
-assert(rules.every((rule) => rule.health === 'ok'));
-console.log('PASS all three recording and five alert rules loaded');
+await eventually('all three recording and five alert rules loaded', async () => {
+  const rules = (await json(`${prometheus}/api/v1/rules`)).data.groups.flatMap((group) => group.rules);
+  assert.equal(rules.length, 8);
+  assert(rules.every((rule) => rule.health === 'ok'));
+});
 
 await eventually('Grafana provisioned dashboards and datasource', async () => {
   const health = await json(`${grafana}/api/health`);
@@ -86,6 +97,10 @@ await eventually('Grafana provisioned dashboards and datasource', async () => {
       const expression = target.expr.replaceAll('$service', '.*').replaceAll('$app', '.*');
       const response = await json(`${grafana}/api/datasources/proxy/uid/prometheus/api/v1/query?query=${encodeURIComponent(expression)}`, { Authorization: authorization });
       assert.equal(response.status, 'success');
+      if (model.title === 'Expo Gateway' && /gateway_http_requests_total\{status="502"\}/.test(expression)) {
+        assert(response.data.result.length > 0, expression);
+        assert(response.data.result.every((sample) => sample.value[1] === '0'), expression);
+      }
       if (/nodejs_|process_(resident|cpu_seconds)/.test(expression) && model.title === 'Expo Gateway') {
         assert(response.data.result.length > 0, expression);
         assert(response.data.result.every((sample) => sample.metric.service === 'expo-gateway'), expression);
