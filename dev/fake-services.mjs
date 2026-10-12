@@ -2,8 +2,9 @@
 // services exposing Micrometer-style http_server_requests_seconds. One
 // instance has prometheus.scrape=false to show the opt-in filter.
 import http from 'node:http';
+import { networkInterfaces } from 'node:os';
 
-const HOST = process.env.ADVERTISE_IP ?? '172.28.0.50';
+const HOST = process.env.ADVERTISE_IP ?? Object.values(networkInterfaces()).flat().find((address) => address.family === 'IPv4' && !address.internal)?.address ?? '127.0.0.1';
 const BUCKETS = [0.05, 0.1, 0.25, 0.5, 1];
 
 const services = [
@@ -11,7 +12,11 @@ const services = [
   { app: 'EXPO-FORM-SERVER', id: 'form-2', port: 9102, rps: 8, errorRate: 0.01, path: '/actuator/prometheus', scrape: true },
   { app: 'EXPO-APPLICATION-SERVER', id: 'application-1', port: 9103, rps: 5, errorRate: 0.1, scrape: true },
   { app: 'EXPO-REPORT-SERVER', id: 'report-1', port: 9104, rps: 1, errorRate: 0, scrape: false },
+  { app: 'EXPO-GATEWAY', id: 'gateway-1', port: 9105, rps: 8, errorRate: 0, scrape: true },
+  { app: 'NO-PORT', id: 'no-port', port: 9106, rps: 1, errorRate: 0, scrape: true, omitPort: true },
+  { app: 'NO-OPT-IN', id: 'no-opt-in', port: 9107, rps: 1, errorRate: 0, omitScrape: true },
 ];
+const hidden = new Set();
 
 for (const s of services) {
   s.counts = { '200': 0, '500': 0 };
@@ -36,16 +41,25 @@ setInterval(() => {
 }, 1000);
 
 function render(s) {
-  const out = ['# TYPE http_server_requests_seconds histogram'];
-  for (const [status, v] of Object.entries(s.counts)) {
-    out.push(`http_server_requests_seconds_count{method="GET",status="${status}",uri="/forms/{id}"} ${v}`);
+  const out = [];
+  if (s.app === 'EXPO-GATEWAY') {
+    out.push(`gateway_http_requests_total{app="demo",status="200"} ${s.total}`);
+    for (const [index, le] of BUCKETS.entries()) out.push(`gateway_http_request_duration_seconds_bucket{app="demo",status_class="2xx",le="${le}"} ${s.buckets[index]}`);
+    out.push(`gateway_http_request_duration_seconds_bucket{app="demo",status_class="2xx",le="+Inf"} ${s.total}`);
+    out.push(`gateway_http_request_duration_seconds_sum{app="demo",status_class="2xx"} ${s.sum}`, `gateway_http_request_duration_seconds_count{app="demo",status_class="2xx"} ${s.total}`);
+    out.push('gateway_upstream_healthy_instances{app="demo"} 1');
+  } else {
+    out.push('# TYPE http_server_requests_seconds histogram');
+    for (const [status, v] of Object.entries(s.counts).filter(([status]) => status !== '500' || s.errorRate > 0)) {
+      out.push(`http_server_requests_seconds_count{method="GET",status="${status}",uri="/forms/{id}"} ${v}`);
+    }
+    BUCKETS.forEach((le, j) => {
+      out.push(`http_server_requests_seconds_bucket{method="GET",status="200",uri="/forms/{id}",le="${le}"} ${s.buckets[j]}`);
+    });
+    out.push(`http_server_requests_seconds_bucket{method="GET",status="200",uri="/forms/{id}",le="+Inf"} ${s.total}`);
+    out.push(`http_server_requests_seconds_sum{method="GET",status="200",uri="/forms/{id}"} ${s.sum}`);
   }
-  BUCKETS.forEach((le, j) => {
-    out.push(`http_server_requests_seconds_bucket{method="GET",status="200",uri="/forms/{id}",le="${le}"} ${s.buckets[j]}`);
-  });
-  out.push(`http_server_requests_seconds_bucket{method="GET",status="200",uri="/forms/{id}",le="+Inf"} ${s.total}`);
-  out.push(`http_server_requests_seconds_sum{method="GET",status="200",uri="/forms/{id}"} ${s.sum}`);
-  out.push('process_cpu_usage 0.12', 'jvm_memory_used_bytes{area="heap",id="G1 Eden Space"} 150000000');
+  out.push('process_cpu_usage 0.12', 'jvm_memory_used_bytes{area="heap",id="G1 Eden Space"} 150000000', 'nodejs_eventloop_lag_seconds 0.001', 'nodejs_eventloop_lag_p99_seconds 0.002', 'process_resident_memory_bytes 50000000', 'nodejs_heap_size_used_bytes 10000000', `process_cpu_seconds_total ${s.total / 100}`);
   return out.join('\n') + '\n';
 }
 
@@ -58,20 +72,28 @@ for (const s of services) {
 }
 
 function instanceXml(s) {
-  const meta = s.scrape
-    ? `<prometheus.scrape>true</prometheus.scrape><prometheus.port>${s.port}</prometheus.port>${s.path ? `<prometheus.path>${s.path}</prometheus.path>` : ''}`
-    : '<prometheus.scrape>false</prometheus.scrape>';
+  const meta = `${s.omitScrape ? '' : `<prometheus.scrape>${s.scrape ? 'true' : 'false'}</prometheus.scrape>`}${s.omitPort ? '' : `<prometheus.port>${s.port}</prometheus.port>`}${s.path ? `<prometheus.path>${s.path}</prometheus.path>` : ''}`;
   return `<instance><instanceId>${s.id}</instanceId><hostName>${s.id}</hostName><app>${s.app}</app><ipAddr>${HOST}</ipAddr><status>UP</status><port enabled="true">8080</port><securePort enabled="false">443</securePort><metadata>${meta}</metadata></instance>`;
 }
 
 http
   .createServer((req, res) => {
+    if (req.method === 'POST' && req.url === '/demo/form-2/hide') {
+      hidden.add('form-2');
+      res.writeHead(204).end();
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/demo/form-2/show') {
+      hidden.delete('form-2');
+      res.writeHead(204).end();
+      return;
+    }
     if (req.url?.startsWith('/eureka/apps')) {
       const apps = [...new Set(services.map((s) => s.app))];
       const body =
         '<applications><versions__delta>1</versions__delta><apps__hashcode>UP_1_</apps__hashcode>' +
         apps
-          .map((a) => `<application><name>${a}</name>${services.filter((s) => s.app === a).map(instanceXml).join('')}</application>`)
+          .map((a) => `<application><name>${a}</name>${services.filter((s) => s.app === a && !hidden.has(s.id)).map(instanceXml).join('')}</application>`)
           .join('') +
         '</applications>';
       res.writeHead(200, { 'Content-Type': 'application/xml' }).end(body);
