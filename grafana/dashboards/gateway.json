@@ -974,7 +974,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "nodejs_eventloop_lag_seconds",
+          "expr": "nodejs_eventloop_lag_seconds{service=\"expo-gateway\"}",
           "legendFormat": "mean",
           "refId": "A",
           "range": true
@@ -984,7 +984,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "nodejs_eventloop_lag_p99_seconds",
+          "expr": "nodejs_eventloop_lag_p99_seconds{service=\"expo-gateway\"}",
           "legendFormat": "p99",
           "refId": "B",
           "range": true
@@ -1040,7 +1040,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "process_resident_memory_bytes",
+          "expr": "process_resident_memory_bytes{service=\"expo-gateway\"}",
           "legendFormat": "rss",
           "refId": "A",
           "range": true
@@ -1050,7 +1050,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "nodejs_heap_size_used_bytes",
+          "expr": "nodejs_heap_size_used_bytes{service=\"expo-gateway\"}",
           "legendFormat": "heap used",
           "refId": "B",
           "range": true
@@ -1106,7 +1106,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(process_cpu_seconds_total[1m])",
+          "expr": "rate(process_cpu_seconds_total{service=\"expo-gateway\"}[1m])",
           "legendFormat": "cpu cores",
           "refId": "A",
           "range": true

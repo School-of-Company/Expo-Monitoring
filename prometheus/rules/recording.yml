@@ -14,15 +14,17 @@ groups:
       - record: service:http_errors_5xx:ratio1m
         expr: |
           (
-            sum by (service) (rate(http_server_requests_seconds_count{status=~"5.."}[1m]))
+            (sum by (service) (rate(http_server_requests_seconds_count{status=~"5.."}[1m]))
+              or 0 * sum by (service) (rate(http_server_requests_seconds_count[1m])))
             /
-            sum by (service) (rate(http_server_requests_seconds_count[1m]))
+            clamp_min(sum by (service) (rate(http_server_requests_seconds_count[1m])), 1e-12)
           )
           or
           (
-            sum by (service) (rate(gateway_http_requests_total{status=~"5.."}[1m]))
+            (sum by (service) (rate(gateway_http_requests_total{status=~"5.."}[1m]))
+              or 0 * sum by (service) (rate(gateway_http_requests_total[1m])))
             /
-            sum by (service) (rate(gateway_http_requests_total[1m]))
+            clamp_min(sum by (service) (rate(gateway_http_requests_total[1m])), 1e-12)
           )
 
       # Needs the histogram: Spring must set

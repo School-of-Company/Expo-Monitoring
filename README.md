@@ -12,7 +12,9 @@ docker compose down         # -v 금지 (대시보드·시계열 볼륨 보존)
 
 - Prometheus는 `http://eureka:8761/eureka`를 조회합니다. `eureka` 이름은 `EUREKA_HOST`(미설정 시 Docker 호스트)로 연결됩니다.
 - Prometheus·Grafana는 `127.0.0.1`에만 publish합니다. 서버에서는 SSH 포워딩으로 접속하세요.
-- 데모(실제 서비스 없이 확인): `EUREKA_HOST=172.28.0.50 docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d`
+- 데모(실제 서비스 없이 확인, `!reset`을 지원하는 Docker Compose 필요): `docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d`
+- 데모는 네트워크 별칭 `eureka`와 컨테이너의 실제 IP를 사용합니다. 고정 서브넷·IP와 `EUREKA_HOST` 설정은 필요하지 않습니다.
+- 새 서버의 환경 변수와 배포 점검은 [배포 환경 안내](docs/deployment-environment.md)를 참고하세요.
 
 ## 서비스가 수집되려면 (Eureka metadata)
 
@@ -45,18 +47,29 @@ Alertmanager는 아직 없어서 Prometheus UI의 Alerts 탭에서만 확인합�
 ## 대시보드
 
 - **MSA Service Overview**: `$service` 변수로 전환하는 RED + 인스턴스 + 런타임(JVM/Node)
-- **Expo Gateway**: Gateway 전용 (Expo-Gateway의 `monitoring/grafana/dashboards/gateway.json` 사본. 원본을 고치면 여기도 갱신하세요)
+- **Expo Gateway**: Gateway 전용 (Expo-Gateway 원본에서 가져왔으며, 공유 스택의 런타임 쿼리에는 `service="expo-gateway"` 필터를 추가했습니다. 원본 갱신 시 이 필터를 유지하세요)
 
 ## 검증
 
 ```bash
-docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p:ro" prom/prometheus:v2.55.1 check config /p/prometheus.yml
+docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p:ro" -v "$PWD/prometheus/rules:/etc/prometheus/rules:ro" prom/prometheus:v2.55.1 check config /p/prometheus.yml
 docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p:ro" prom/prometheus:v2.55.1 check rules /p/rules/recording.yml /p/rules/alerts.yml
 docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p:ro" prom/prometheus:v2.55.1 test rules /p/tests/rules.test.yml
 ```
 
+설정 검사에는 `/etc/prometheus/rules` 마운트가 필요합니다. 빠지면 설정의 절대 경로 glob이 룰 파일을 찾지 못해도 검사가 통과할 수 있습니다.
+
+데모를 실행한 뒤 실제 Prometheus의 자동 대상 추가·삭제, opt-in 제외, 공통 RED와 Grafana의 두 대시보드 쿼리를 검사합니다. 기존 Grafana 볼륨을 사용한다면 `GRAFANA_ADMIN_PASSWORD`는 현재 관리자 비밀번호와 같아야 합니다.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.demo.yml exec -T -e GRAFANA_ADMIN_PASSWORD fake-services node /app/verify-demo.mjs
+docker compose -f docker-compose.yml -f docker-compose.demo.yml down
+```
+
+`Validate monitoring` CI는 PR과 `develop` push에서 같은 검사를 실행합니다. 유휴 카운터와 5xx 시계열이 없는 서비스의 오류 비율은 0으로 기록하고, 전체 요청 시계열이 없는 서비스는 생성하지 않습니다. 룰 테스트는 저트래픽 알림 억제와 공통·Gateway 전용 알림도 검사합니다.
+
 ## 한계
 
-- 실제 Eureka 서버 이미지(`steeltoeoss/eurekaserver`, Spring Cloud Netflix)에 metadata를 단 인스턴스를 등록해 디스커버리와 룰 로딩을 확인했습니다. 실제 MSA 서비스들은 아직 metadata를 등록하지 않아서 자동 수집은 그 이후에 됩니다.
+- 실제 서비스 수집 여부는 배포된 Eureka metadata와 메트릭 listener에 달려 있습니다. Gateway metadata 변경과 Config Server 규약 이슈는 병합/완료되었지만, 현재 운영 targets와 서비스별 적용·배포 완료를 이 저장소의 로컬 검증으로 판단하지 않습니다.
 - 로컬 데모는 가짜 Eureka(XML)와 가짜 서비스를 씁니다.
 - 대시보드 JSON은 파일 프로비저닝이라 UI에서 수정해도 저장되지 않습니다.

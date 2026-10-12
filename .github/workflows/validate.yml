@@ -1,0 +1,34 @@
+name: Validate monitoring
+
+on:
+  pull_request:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GRAFANA_ADMIN_PASSWORD: local-demo-validation
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Prometheus configuration and rules
+        run: |
+          promtool() { docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p:ro" -v "$PWD/prometheus/rules:/etc/prometheus/rules:ro" prom/prometheus:v2.55.1 "$@"; }
+          promtool check config /p/prometheus.yml
+          promtool check rules /p/rules/recording.yml /p/rules/alerts.yml
+          promtool test rules /p/tests/rules.test.yml
+      - name: Verify discovery, RED records and dashboard queries
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d
+          docker compose -f docker-compose.yml -f docker-compose.demo.yml exec -T -e GRAFANA_ADMIN_PASSWORD fake-services node /app/verify-demo.mjs
+      - name: Demo logs
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.demo.yml logs --tail 80
+      - name: Stop demo
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.demo.yml down

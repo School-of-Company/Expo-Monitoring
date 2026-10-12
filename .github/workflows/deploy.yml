@@ -26,7 +26,7 @@ jobs:
       # README 의 검증 절차와 같다. 설정·룰이 깨져 있으면 업로드 전에 멈춘다.
       - name: Validate Prometheus config and rules
         run: |
-          promtool() { docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p:ro" prom/prometheus:v2.55.1 "$@"; }
+          promtool() { docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p:ro" -v "$PWD/prometheus/rules:/etc/prometheus/rules:ro" prom/prometheus:v2.55.1 "$@"; }
           promtool check config /p/prometheus.yml
           promtool check rules /p/rules/recording.yml /p/rules/alerts.yml
           promtool test rules /p/tests/rules.test.yml
