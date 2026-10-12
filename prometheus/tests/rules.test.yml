@@ -44,10 +44,40 @@ tests:
         values: '0+0.675x40'
       - series: 'http_server_requests_seconds_count{service="quiet",instance="a",status="500"}'
         values: '0+0.075x40'
+      - series: 'gateway_http_requests_total{service="quiet-gateway",app="quiet",status="200"}'
+        values: '0+0.525x40'
+      - series: 'gateway_http_requests_total{service="quiet-gateway",app="quiet",status="502"}'
+        values: '0+0.225x40'
     alert_rule_test:
       - eval_time: 8m
         alertname: ServiceHigh5xxRate
         exp_alerts: []
+      - eval_time: 8m
+        alertname: GatewayUpstream502Rate
+        exp_alerts: []
+
+  - interval: 15s
+    input_series:
+      - series: 'http_server_requests_seconds_bucket{service="spring",le="0.5"}'
+        values: '0+135x40'
+      - series: 'http_server_requests_seconds_bucket{service="spring",le="1"}'
+        values: '0+150x40'
+      - series: 'http_server_requests_seconds_bucket{service="spring",le="+Inf"}'
+        values: '0+150x40'
+      - series: 'gateway_http_request_duration_seconds_bucket{service="expo-gateway",le="0.5"}'
+        values: '0+135x40'
+      - series: 'gateway_http_request_duration_seconds_bucket{service="expo-gateway",le="1"}'
+        values: '0+150x40'
+      - series: 'gateway_http_request_duration_seconds_bucket{service="expo-gateway",le="+Inf"}'
+        values: '0+150x40'
+    promql_expr_test:
+      - expr: service:http_latency_p95:5m
+        eval_time: 5m
+        exp_samples:
+          - labels: 'service:http_latency_p95:5m{service="spring"}'
+            value: 0.75
+          - labels: 'service:http_latency_p95:5m{service="expo-gateway"}'
+            value: 0.75
 
   # Gateway series map onto the same record names.
   - interval: 15s
@@ -60,6 +90,115 @@ tests:
         exp_samples:
           - labels: 'service:http_requests:rate1m{service="expo-gateway"}'
             value: 2
+      - expr: service:http_errors_5xx:ratio1m{service="expo-gateway"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'service:http_errors_5xx:ratio1m{service="expo-gateway"}'
+            value: 0
+
+  # Missing 5xx series and idle counters must both produce zero, never NaN.
+  - interval: 15s
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="healthy",status="200"}'
+        values: '0+30x40'
+      - series: 'http_server_requests_seconds_count{service="idle",status="200"}'
+        values: '0x40'
+      - series: 'http_server_requests_seconds_count{service="idle",status="500"}'
+        values: '0x40'
+      - series: 'gateway_http_requests_total{service="idle-gateway",status="200"}'
+        values: '0x40'
+    promql_expr_test:
+      - expr: service:http_errors_5xx:ratio1m
+        eval_time: 5m
+        exp_samples:
+          - labels: 'service:http_errors_5xx:ratio1m{service="healthy"}'
+            value: 0
+          - labels: 'service:http_errors_5xx:ratio1m{service="idle"}'
+            value: 0
+          - labels: 'service:http_errors_5xx:ratio1m{service="idle-gateway"}'
+            value: 0
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: ServiceHigh5xxRate
+        exp_alerts: []
+
+  # Gateway alerts still fire independently of the common RED mapping.
+  - interval: 15s
+    input_series:
+      - series: 'gateway_http_requests_total{service="expo-gateway",status="200",app="demo"}'
+        values: '0+105x40'
+      - series: 'gateway_http_requests_total{service="expo-gateway",status="502",app="demo"}'
+        values: '0+45x40'
+      - series: 'gateway_upstream_healthy_instances{service="expo-gateway",app="demo"}'
+        values: '0x40'
+      - series: 'gateway_upstream_poll_failures_total{service="expo-gateway",app="demo"}'
+        values: '0+1x40'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: GatewayUpstream502Rate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              app: demo
+            exp_annotations:
+              summary: "demo: more than 20% of requests fail with 502"
+              description: "Requests routed to demo are failing at the connection level. If gateway_upstream_healthy_instances is still above 0, Eureka has not noticed yet (lease not expired)."
+      - eval_time: 8m
+        alertname: GatewayNoHealthyInstances
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              app: demo
+              service: expo-gateway
+            exp_annotations:
+              summary: "demo: Eureka reports no UP instance"
+              description: "This is Eureka's view, not proof of reachability - a crashed instance stays UP until its lease expires."
+      - eval_time: 8m
+        alertname: GatewayEurekaPollFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              app: demo
+              service: expo-gateway
+            exp_annotations:
+              summary: "Background Eureka poll failing for demo"
+              description: gateway_upstream_healthy_instances is dropped while polls fail, so it is not reporting.
+
+  # Missing 502 series and idle apps both have zero ratio and no alert.
+  - interval: 15s
+    input_series:
+      - series: 'gateway_http_requests_total{service="expo-gateway",app="healthy",status="200"}'
+        values: '0+30x40'
+      - series: 'gateway_http_requests_total{service="expo-gateway",app="idle",status="200"}'
+        values: '0x40'
+      - series: 'gateway_http_requests_total{service="expo-gateway",app="idle",status="502"}'
+        values: '0x40'
+    promql_expr_test:
+      - expr: |
+          (sum by (app) (rate(gateway_http_requests_total{status="502"}[1m]))
+            or 0 * sum by (app) (rate(gateway_http_requests_total[1m])))
+          / clamp_min(sum by (app) (rate(gateway_http_requests_total[1m])), 1e-12)
+        eval_time: 5m
+        exp_samples:
+          - labels: '{app="healthy"}'
+            value: 0
+          - labels: '{app="idle"}'
+            value: 0
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: GatewayUpstream502Rate
+        exp_alerts: []
+
+  # An empty scrape must not create a fabricated service or alert.
+  - interval: 15s
+    promql_expr_test:
+      - expr: service:http_errors_5xx:ratio1m
+        eval_time: 5m
+        exp_samples: []
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: ServiceHigh5xxRate
+        exp_alerts: []
 
   - interval: 15s
     input_series:
