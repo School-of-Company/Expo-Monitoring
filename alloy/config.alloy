@@ -1,0 +1,73 @@
+// Tails *.log under /var/log/expo (LOG_DIR on the host) and pushes to Loki.
+// Labels are fixed to service and level on purpose: phone numbers, tokens and
+// request ids must never become labels (cardinality and personal data).
+
+local.file_match "expo" {
+  path_targets = [{"__path__" = "/var/log/expo/**/*.log"}]
+  sync_period  = "10s"
+}
+
+loki.source.file "expo" {
+  targets       = local.file_match.expo.targets
+  forward_to    = [loki.process.expo.receiver]
+  tail_from_end = false
+}
+
+loki.process "expo" {
+  // service: file name without PM2 suffixes (-out, -error, -N), e.g.
+  // expo-form-server-out.log -> expo-form-server. Lower-cased.
+  stage.regex {
+    source     = "filename"
+    expression = "/(?P<service>[^/]+?)(?:[-_.](?:out|error|err|stdout|stderr))?(?:-[0-9]+)?\\.log$"
+  }
+  stage.template {
+    source   = "service"
+    template = "{{ ToLower .Value }}"
+  }
+  stage.labels {
+    values = { service = "" }
+  }
+
+  // level: first level keyword in the line, lower-cased; "unknown" if none.
+  stage.regex {
+    expression = "(?i)\\b(?P<level>trace|debug|info|warn|warning|error|fatal)\\b"
+  }
+  stage.template {
+    source   = "level"
+    template = "{{ if .Value }}{{ ToLower .Value }}{{ else }}unknown{{ end }}"
+  }
+  stage.labels {
+    values = { level = "" }
+  }
+
+  // Masking. Order matters: tokens first, then phone numbers. 32-hex trace ids
+  // (trace=<id>) are shorter than the 40-char token rule and stay readable.
+  stage.replace {
+    expression = "(eyJ[A-Za-z0-9_-]{5,}\\.[A-Za-z0-9_-]{5,}\\.[A-Za-z0-9_-]{5,})"
+    replace    = "<jwt>"
+  }
+  stage.replace {
+    expression = "(?i)bearer\\s+([A-Za-z0-9._~+/=-]{8,})"
+    replace    = "<token>"
+  }
+  stage.replace {
+    expression = "([A-Za-z0-9_-]{40,})"
+    replace    = "<token>"
+  }
+  stage.replace {
+    expression = "\\b(01[016-9]-?[0-9]{3,4}-?[0-9]{4})\\b"
+    replace    = "<phone>"
+  }
+
+  stage.label_drop {
+    values = ["filename"]
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
