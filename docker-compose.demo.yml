@@ -1,13 +1,27 @@
 # Local demo: fake Eureka, Spring/Gateway metrics and excluded instances.
 #   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d
+# Fake services also write PM2-style log files into a shared volume that Alloy tails.
 services:
   prometheus:
     extra_hosts: !reset []
   fake-services:
     image: node:22-slim
-    command: ["node", "/app/fake-services.mjs"]
+    command: ["sh", "-c", "node /app/fake-webhook.mjs & exec node /app/fake-services.mjs"]
+    environment:
+      LOG_DIR: /var/log/expo
     volumes:
       - ./dev:/app:ro
+      - demo-logs:/var/log/expo
     networks:
       monitoring:
         aliases: [eureka]
+  alloy:
+    volumes:
+      - demo-logs:/var/log/expo:ro
+  grafana:
+    environment:
+      # Local fake webhook (dev/fake-webhook.mjs) instead of a real Discord URL.
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-http://fake-services:9999/webhook}
+
+volumes:
+  demo-logs:

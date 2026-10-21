@@ -2,6 +2,8 @@
 // services exposing Micrometer-style http_server_requests_seconds. One
 // instance has prometheus.scrape=false to show the opt-in filter.
 import http from 'node:http';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 
 const HOST = process.env.ADVERTISE_IP ?? Object.values(networkInterfaces()).flat().find((address) => address.family === 'IPv4' && !address.internal)?.address ?? '127.0.0.1';
@@ -18,6 +20,23 @@ const services = [
   { app: 'EXPO-ATTENTION-SERVER', id: 'attendance-1', port: 9108, rps: 8, errorRate: 0, path: '/actuator/prometheus', scrape: true },
 ];
 const hidden = new Set();
+
+// Demo logs: PM2-style files (<service>.log) that Alloy tails. The lines carry a
+// phone number, a long token and a trace id on purpose, to prove masking.
+const LOG_DIR = process.env.LOG_DIR;
+if (LOG_DIR) {
+  mkdirSync(LOG_DIR, { recursive: true });
+  const lines = [
+    (s) => `${new Date().toISOString()} INFO  [${s}] form submitted phone=010-1234-5678 trace=${randomBytes(16).toString('hex')}`,
+    (s) => `${new Date().toISOString()} WARN  [${s}] retry sms to 01098765432 Authorization: Bearer abcDEF123456789xyz`,
+    (s) => `${new Date().toISOString()} ERROR [${s}] outbox publish failed token=${randomBytes(24).toString('hex')} trace=${randomBytes(16).toString('hex')}`,
+  ];
+  setInterval(() => {
+    for (const name of ['expo-form-server', 'expo-application-server']) {
+      appendFileSync(`${LOG_DIR}/${name}.log`, lines.map((l) => l(name)).join('\n') + '\n');
+    }
+  }, 2000);
+}
 
 for (const s of services) {
   s.counts = { '200': 0, '500': 0 };
@@ -80,6 +99,12 @@ function render(s) {
       for (const le of ['0.01', '0.5', '1', '+Inf']) out.push(`attendance_guard_lock_wait_seconds_bucket{kind="${kind}",le="${le}"} ${s.total}`);
     }
     out.push('attendance_qr_entry_pending 0');
+  }
+  if (s.app === 'EXPO-FORM-SERVER') {
+    // form-1 has a stuck outbox (demo of the Grafana alert); form-2 is healthy.
+    out.push(`form_outbox_oldest_pending_age_seconds{outbox="form"} ${s.id === 'form-1' ? 900 : 0}`);
+    out.push('form_outbox_records{outbox="form",state="pending"} 3', 'form_outbox_records{outbox="form",state="published"} 100');
+    out.push('form_db_pool_connections{state="total"} 10', 'form_db_pool_connections{state="idle"} 8', 'form_db_pool_connections{state="waiting"} 0');
   }
   out.push('process_cpu_usage 0.12', 'jvm_memory_used_bytes{area="heap",id="G1 Eden Space"} 150000000', 'nodejs_eventloop_lag_seconds 0.001', 'nodejs_eventloop_lag_p99_seconds 0.002', 'process_resident_memory_bytes 50000000', 'nodejs_heap_size_used_bytes 10000000', `process_cpu_seconds_total ${s.total / 100}`);
   return out.join('\n') + '\n';

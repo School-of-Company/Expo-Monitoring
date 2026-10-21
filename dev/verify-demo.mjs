@@ -10,8 +10,8 @@ async function json(url, headers = {}) {
   return response.json();
 }
 
-async function eventually(label, check) {
-  const deadline = Date.now() + 120_000;
+async function eventually(label, check, timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
   let failure;
   do {
     try {
@@ -107,7 +107,7 @@ await eventually('Grafana provisioned dashboards and datasource', async () => {
   const health = await json(`${grafana}/api/health`);
   assert.equal(health.database, 'ok');
   const dashboards = await json(`${grafana}/api/search?type=dash-db`, { Authorization: authorization });
-  assert.equal(dashboards.length, 3);
+  assert.equal(dashboards.length, 4);
   for (const dashboard of dashboards) {
     const model = (await json(`${grafana}/api/dashboards/uid/${dashboard.uid}`, { Authorization: authorization })).dashboard;
     for (const target of model.panels.flatMap((panel) => panel.targets ?? [])) {
@@ -119,6 +119,7 @@ await eventually('Grafana provisioned dashboards and datasource', async () => {
         assert(response.data.result.length > 0, expression);
         assert(response.data.result.every((sample) => Number.isFinite(Number(sample.value[1]))), expression);
       }
+      if (model.title === 'Expo Form') assert(response.data.result.length > 0, expression);
       if (model.title === 'Expo Gateway' && /gateway_http_requests_total\{status="502"\}/.test(expression)) {
         assert(response.data.result.length > 0, expression);
         assert(response.data.result.every((sample) => sample.value[1] === '0'), expression);
@@ -129,4 +130,64 @@ await eventually('Grafana provisioned dashboards and datasource', async () => {
       }
     }
   }
+});
+
+// --- Logs, traces and alerting (Loki, Tempo, Grafana provisioning, fake webhook) ---
+const loki = (path) => json(`${grafana}/api/datasources/proxy/uid/loki${path}`, { Authorization: authorization });
+
+await eventually('Loki datasource is healthy', async () => {
+  assert.equal((await json(`${grafana}/api/datasources/uid/loki/health`, { Authorization: authorization })).status, 'OK');
+});
+
+await eventually('Loki has demo logs with only service/level labels and masked values', async () => {
+  const query = encodeURIComponent('{service="expo-form-server"}');
+  const result = await loki(`/loki/api/v1/query_range?query=${query}&limit=50`);
+  const streams = result.data.result;
+  assert(streams.length > 0, 'no streams');
+  const labels = new Set(streams.flatMap((stream) => Object.keys(stream.stream)));
+  assert.deepEqual([...labels].sort(), ['level', 'service']);
+  const lines = streams.flatMap((stream) => stream.values.map((value) => value[1])).join('\n');
+  assert(lines.includes('<phone>') && lines.includes('<token>'), 'masking placeholders missing');
+  assert(!/01\d-?\d{3,4}-?\d{4}/.test(lines), 'phone number leaked');
+  assert(!/[A-Za-z0-9_-]{40,}/.test(lines) && !/Bearer abc/.test(lines), 'token leaked');
+  assert(/trace=[0-9a-f]{32}/.test(lines), 'trace id should stay readable');
+});
+
+await eventually('Tempo returns a span sent over OTLP HTTP', async () => {
+  const traceId = '0af7651916cd43dd8448eb211c80319c';
+  const nano = BigInt(Date.now()) * 1000000n;
+  const post = await fetch('http://tempo:4318/v1/traces', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resourceSpans: [{ resource: { attributes: [{ key: 'service.name', value: { stringValue: 'expo-form-server' } }] }, scopeSpans: [{ spans: [{ traceId, spanId: 'b7ad6b7169203331', name: 'demo', kind: 2, startTimeUnixNano: String(nano - 200000000n), endTimeUnixNano: String(nano) }] }] }] }),
+  });
+  assert.equal(post.status, 200);
+  const trace = await json(`${grafana}/api/datasources/proxy/uid/tempo/api/traces/${traceId}`, { Authorization: authorization });
+  assert(trace.batches?.length > 0);
+}, 90_000);
+
+await eventually('Alerting provisioning: contact point, root policy and rules', async () => {
+  const headers = { Authorization: authorization };
+  const contacts = await json(`${grafana}/api/v1/provisioning/contact-points`, headers);
+  assert(contacts.some((c) => c.name === 'discord' && c.type === 'discord'));
+  const policy = await json(`${grafana}/api/v1/provisioning/policies`, headers);
+  assert.equal(policy.receiver, 'discord');
+  assert.deepEqual(policy.group_by, ['alertname', 'service']);
+  const titles = (await json(`${grafana}/api/v1/provisioning/alert-rules`, headers)).map((rule) => rule.title);
+  for (const title of ['ServiceHigh5xxRate', 'FormOutboxStalled', 'FormDbPoolExhausted']) assert(titles.includes(title), title);
+});
+
+await eventually('Firing alert reaches the webhook with a PNG attachment', async () => {
+  const received = await json('http://localhost:9999/received');
+  const hit = received.find((entry) => entry.multipart && entry.hasFile && entry.png);
+  assert(hit, `no image notification yet (${received.length} received)`);
+  assert(hit.payload.includes('FormOutboxStalled'));
+}, 300_000);
+
+await eventually('External snapshots are disabled, local ones work', async () => {
+  const headers = { Authorization: authorization, 'Content-Type': 'application/json' };
+  const { dashboard } = await json(`${grafana}/api/dashboards/uid/expo-form`, headers);
+  const create = (external) => fetch(`${grafana}/api/snapshots`, { method: 'POST', headers, body: JSON.stringify({ dashboard, name: 'verify', expires: 60, external }) });
+  assert.equal((await create(true)).status, 403);
+  assert.equal((await create(false)).status, 200);
 });
