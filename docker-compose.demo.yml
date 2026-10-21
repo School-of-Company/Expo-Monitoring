@@ -18,10 +18,19 @@ services:
   alloy:
     volumes:
       - demo-logs:/var/log/expo:ro
+  alertmanager:
+    volumes:
+      # Short waits/repeat for the demo; the production file is checked by amtool in CI.
+      - ./dev/alertmanager.demo.yml:/etc/alertmanager/alertmanager.yml:ro
   grafana:
     environment:
       # Local fake webhook (dev/fake-webhook.mjs) instead of a real Discord URL.
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-http://fake-services:9999/webhook}
+
+# Fake (non-secret) webhook for Alertmanager; Grafana uses DISCORD_WEBHOOK_URL above.
+secrets:
+  discord_webhook_url: !override
+    file: ./dev/alertmanager-demo-webhook-url
 
 volumes:
   demo-logs:

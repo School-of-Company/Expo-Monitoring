@@ -81,10 +81,22 @@ await eventually('common RED records and zero-error gateway', async () => {
   assert((await query('gateway_http_requests_total{service="expo-gateway"}')).length > 0);
 });
 
-await eventually('all eight recording and eleven alert rules loaded', async () => {
+await eventually('all fourteen recording and nineteen alert rules loaded, Alertmanager connected', async () => {
   const rules = (await json(`${prometheus}/api/v1/rules`)).data.groups.flatMap((group) => group.rules);
-  assert.equal(rules.length, 19);
+  assert.equal(rules.length, 33);
   assert(rules.every((rule) => rule.health === 'ok'));
+  const alertmanagers = (await json(`${prometheus}/api/v1/alertmanagers`)).data.activeAlertmanagers;
+  assert(alertmanagers.some((am) => am.url.startsWith('http://alertmanager:9093/')));
+  assert.equal((await fetch('http://alertmanager:9093/-/ready')).status, 200);
+});
+
+await eventually('Form downstream label collision becomes exported_service and form rules are idle', async () => {
+  const samples = await query('form_downstream_calls_seconds_count{service="expo-form-server"}');
+  assert.deepEqual([...new Set(samples.map((sample) => sample.metric.exported_service))].sort(), ['expo', 'user']);
+  assert.deepEqual([...new Set(samples.map((sample) => sample.metric.outcome))].sort(), ['conflict', 'failure', 'not_found', 'success', 'timeout']);
+  const rules = (await json(`${prometheus}/api/v1/rules`)).data.groups.find((group) => group.name === 'form').rules;
+  assert.equal(rules.filter((rule) => rule.type === 'alerting').length, 8);
+  assert(rules.filter((rule) => rule.type === 'alerting').every((rule) => rule.state === 'inactive'));
 });
 
 await eventually('Attendance label collision, outcome separation and healthy rule state', async () => {
