@@ -46,18 +46,19 @@ Spring(Micrometer)과 NestJS 모두 `http_server_requests_seconds{method,status,
 
 ## 알림 (`prometheus/rules/alerts.yml`)
 
-Alertmanager는 아직 없어서 이 규칙은 Prometheus UI의 Alerts 탭에서만 확인합니다. Discord로 가는 Grafana 관리 알림(그래프 이미지 첨부)은 [별도](docs/alerting.md)입니다.
+이 규칙은 Alertmanager를 거쳐 Discord로 가고(복구 알림 포함), Prometheus UI의 Alerts 탭에서도 보입니다. 그래프 이미지가 붙는 Grafana 관리 알림 3개는 Alertmanager에서 제외해 중복되지 않습니다. 구성·웹훅 주입·운영 배포(미정)는 [알림 문서](docs/alerting.md)를 참고하세요.
 
 - `ServiceDown`: Eureka에 있는데 scrape가 1분간 실패. 크래시한 인스턴스를 Eureka가 evict하면 target이 사라져 알림도 해소되므로, 장애 기록으로 쓰지 마세요.
 - `ServiceHigh5xxRate`: 서비스별 5xx > 5% (5분), 요청률 0.1 req/s 미만이면 제외
 - Gateway 전용: `GatewayUpstream502Rate`, `GatewayNoHealthyInstances`, `GatewayEurekaPollFailing`. Expo-Gateway에서 가져왔고, `GatewayDown`·`GatewayHigh5xxRate`는 공통 룰이 대신합니다.
+- Form 전용(`form.yml`): 지연 p95, 공개 설문 5xx/p95, 아웃박스 EXHAUSTED, 결과 컨슈머 skip, 릴레이 실패율, 박람회·유저 호출 실패·지연. 아웃박스 정체와 DB 풀은 Grafana 알림이 담당합니다. 임계값은 제안입니다.
 - Attendance 전용: 회로 열림, 입구 5xx/p95, downstream failure, guard lock p95, QR pending. [계약·초기 임계값 근거·운영 미확인](docs/attendance-monitoring.md)을 참고하세요. 임계값은 운영 합의 전 제안입니다.
 
 ## 대시보드
 
 - **MSA Service Overview**: `$service` 변수로 전환하는 RED + 인스턴스 + 런타임(JVM/Node)
 - **Expo Gateway**: Gateway 전용 (Expo-Gateway 원본에서 가져왔으며, 공유 스택의 런타임 쿼리에는 `service="expo-gateway"` 필터를 추가했습니다. 원본 갱신 시 이 필터를 유지하세요)
-- **Expo Form**: 아웃박스 가장 오래된 미발행 건의 나이, DB 연결 풀(Grafana 알림의 패널 이미지용)
+- **Expo Form**: 요청 RED, 공개 설문 경로(`/surveys/public`, `/surveys/answer/public`), 아웃박스 상태·나이, 릴레이, 결과 컨슈머 skip, DB 연결 풀, 박람회·유저 호출. 패널 1·2는 Grafana 알림의 이미지용이라 id를 바꾸지 않습니다.
 - **Expo Attendance**: 입구 스캔 RED, name별 회로, 대상/outcome별 호출, kind별 락 대기, QR backlog. 실제 Eureka 이름은 `expo-attention-server`입니다.
 
 ## 검증
@@ -68,14 +69,14 @@ bash dev/validate-prometheus.sh
 
 설정 검사에는 `/etc/prometheus/rules` 마운트가 필요합니다. 빠지면 설정의 절대 경로 glob이 룰 파일을 찾지 못해도 검사가 통과할 수 있습니다.
 
-데모를 실행한 뒤 실제 Prometheus의 자동 대상 추가·삭제, opt-in 제외, 공통 RED와 Grafana의 대시보드 쿼리, Loki 로그 수집·마스킹, Tempo의 OTLP 조회, 알림 프로비저닝과 가짜 웹훅의 이미지 첨부, 스냅샷 설정을 검사합니다(알림 발화를 기다려 약 4분 걸립니다). 기존 Grafana 볼륨을 사용한다면 `GRAFANA_ADMIN_PASSWORD`는 현재 관리자 비밀번호와 같아야 합니다.
+데모를 실행한 뒤 실제 Prometheus의 자동 대상 추가·삭제, opt-in 제외, 공통 RED와 Grafana의 대시보드 쿼리, Alertmanager 연결, Loki 로그 수집·마스킹, Tempo의 OTLP 조회, 알림 프로비저닝과 가짜 웹훅의 이미지 첨부, 스냅샷 설정을 검사합니다(알림 발화를 기다려 약 4분 걸립니다). 기존 Grafana 볼륨을 사용한다면 `GRAFANA_ADMIN_PASSWORD`는 현재 관리자 비밀번호와 같아야 합니다.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.demo.yml exec -T -e GRAFANA_ADMIN_PASSWORD fake-services node /app/verify-demo.mjs
 docker compose -f docker-compose.yml -f docker-compose.demo.yml down
 ```
 
-`Validate monitoring` CI는 PR과 `develop` push에서 같은 검사를 실행합니다. 유휴 카운터와 5xx 시계열이 없는 서비스의 오류 비율은 0으로 기록하고, 전체 요청 시계열이 없는 서비스는 생성하지 않습니다. 룰 테스트는 저트래픽 알림 억제와 공통·Gateway 전용 알림도 검사합니다.
+Alertmanager→(가짜)Discord의 발화·그룹·반복·복구·중복 없음은 `dev/verify-alertmanager.mjs`로 수동 확인합니다(약 10분, 사용법은 [알림 문서](docs/alerting.md)). `Validate monitoring` CI는 PR과 `develop` push에서 같은 검사를 실행합니다. 유휴 카운터와 5xx 시계열이 없는 서비스의 오류 비율은 0으로 기록하고, 전체 요청 시계열이 없는 서비스는 생성하지 않습니다. 룰 테스트는 저트래픽 알림 억제와 공통·Gateway 전용 알림도 검사합니다.
 
 ## 한계
 

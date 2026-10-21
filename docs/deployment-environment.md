@@ -8,13 +8,13 @@
 |---|---|---|
 | `GRAFANA_ADMIN_PASSWORD` | `admin` | Grafana 초기 관리자 비밀번호. `.env.example`의 `change-me`와 기본값을 실제 환경에서 사용하지 않습니다. 기존 Grafana 데이터가 있으면 이 변수 변경만으로 관리자 비밀번호가 교체되지 않습니다. |
 | `EUREKA_HOST` | `host-gateway` | `eureka` 이름에 매핑할 주소. Eureka가 Docker 호스트에서 실행되면 비워 두고, 다른 호스트라면 그 주소를 설정합니다. 포트는 변경하지 않습니다. |
-| `DISCORD_WEBHOOK_URL` | 연결 불가 자리표시 주소 | Grafana Discord 연락처의 웹훅. 비밀이므로 서버 `.env`에만 둡니다. [알림 문서](alerting.md) |
+| `DISCORD_WEBHOOK_URL` | Grafana: 연결 불가 자리표시 주소 / Alertmanager: 빈 값 | Grafana 연락처와 Alertmanager(compose secret 파일)의 웹훅. 비밀이므로 서버 `.env`에만 둡니다. [알림 문서](alerting.md) |
 | `GRAFANA_ROOT_URL` | `http://127.0.0.1:3001` | 알림 메시지의 대시보드·패널·silence 링크 기준 주소 |
 | `LOG_DIR` | `./logs`(빈 디렉터리) | Alloy가 읽기 전용으로 마운트할 PM2 로그 디렉터리. `*.log`를 하위 경로까지 수집. 실제 경로는 서버에서 확인 |
 | `LOKI_RETENTION_PERIOD` | `168h` | 로그 보존 기간 |
 | `TEMPO_RETENTION_PERIOD` | `168h` | 추적 보존 기간 |
 
-`.env`는 커밋하지 않습니다. Compose의 Prometheus/Grafana 공개 포트는 각각 `127.0.0.1:9090`, `127.0.0.1:3001`이고 SSH 터널로 접근합니다. Tempo의 OTLP(`127.0.0.1:4317`, `4318`)도 loopback에만 publish하며, Loki·Alloy·이미지 렌더러는 publish하지 않습니다. 데모에서는 `EUREKA_HOST` 매핑을 제거하고 가짜 서비스의 네트워크 별칭으로 Eureka를 찾습니다.
+`.env`는 커밋하지 않습니다. Compose의 Prometheus/Grafana/Alertmanager 공개 포트는 각각 `127.0.0.1:9090`, `127.0.0.1:3001`, `127.0.0.1:9093`이고 SSH 터널로 접근합니다. Tempo의 OTLP(`127.0.0.1:4317`, `4318`)도 loopback에만 publish하며, Loki·Alloy·이미지 렌더러는 publish하지 않습니다. 데모에서는 `EUREKA_HOST` 매핑을 제거하고 가짜 서비스의 네트워크 별칭으로 Eureka를 찾습니다.
 
 ## New server: binaries and pm2
 
@@ -46,7 +46,7 @@ Eureka 인스턴스에 `prometheus.scrape="true"`, 숫자 `prometheus.port`, 필
 - 메트릭 listener는 Prometheus에서 접근 가능한 내부 주소에 바인딩합니다. 같은 호스트의 바이너리라면 loopback이 가능하지만, 다른 컨테이너/호스트에서 수집할 때 서비스의 loopback만으로는 접근할 수 없습니다.
 - 메트릭 포트를 공용 인터넷에 공개하지 말고 Prometheus의 실제 출발지에서만 허용합니다. 서비스 등록 시 광고된 IP와 메트릭 포트가 그 경로로 접근 가능한지 확인합니다.
 - Eureka와 대상 서비스를 기동한 뒤 Prometheus `/api/v1/targets`에서 Gateway 포함 대상, `health=up`, 마지막 scrape 오류, 제외된 metadata를 확인합니다. 인스턴스 추가·삭제가 새로고침 없이 반영되는지도 확인합니다.
-- Prometheus `/-/ready`, `/api/v1/rules`, Grafana `/api/health`와 세 대시보드의 datasource 쿼리를 확인합니다. 알림은 Prometheus UI에만 표시하며 Alertmanager와 알림 수신 환경 변수는 없습니다.
+- Prometheus `/-/ready`, `/api/v1/rules`, Grafana `/api/health`와 세 대시보드의 datasource 쿼리를 확인합니다. Alertmanager는 Compose(개발·검증용)에만 있고 **운영 서버 배포 방식은 미정**입니다([알림 문서](alerting.md)의 "운영 배포"). `deploy.yml`은 아직 `alertmanager/`를 올리지 않습니다.
 - 운영 확인 기록에는 시각, 배포 SHA, 대상 서비스·인스턴스, scrape 결과, 내부 접근 경로와 방화벽 조건만 남깁니다. 토큰·비밀번호·SSH 키는 기록하지 않습니다.
 
 ## Verification status (2026-10-12)
