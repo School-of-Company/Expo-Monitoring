@@ -1,0 +1,23 @@
+apiVersion: 1
+
+datasources:
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      # Trace -> logs of the same service and trace id. OTLP resource attribute
+      # service.name must equal the Loki `service` label (the log file name).
+      tracesToLogsV2:
+        datasourceUid: loki
+        tags:
+          - key: service.name
+            value: service
+        filterByTraceID: true
+        filterBySpanID: false
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m
+      nodeGraph:
+        enabled: false
