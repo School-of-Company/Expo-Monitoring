@@ -1,0 +1,41 @@
+# DEMO ONLY (docker-compose.demo.yml): same routing as alertmanager/alertmanager.yml with short
+# waits and repeat intervals so a local run can observe grouping, repeat and resolve in minutes.
+# Alertmanager -> Discord. The webhook URL is never written here: Alertmanager does
+# not expand environment variables, so it is read from a secret file (webhook_url_file).
+# Values below (waits, repeat intervals) are initial proposals, tune after watching the noise.
+global:
+  resolve_timeout: 5m
+
+templates:
+  # Rendered at container start from alertmanager/templates/expo.tmpl (Grafana base URL).
+  - /tmp/templates/*.tmpl
+
+route:
+  receiver: discord
+  group_by: [alertname, service]
+  group_wait: 5s
+  group_interval: 20s
+  repeat_interval: 2m
+  routes:
+    # Conditions that the Grafana-managed rules (with panel images, grafana/provisioning/alerting)
+    # already deliver to Discord. Dropped here so the same condition never arrives twice.
+    - receiver: "null"
+      matchers:
+        - alertname=~"ServiceHigh5xxRate|FormOutboxStalled|FormDbPoolExhausted"
+    - receiver: discord
+      matchers:
+        - severity="critical"
+      repeat_interval: 90s
+    - receiver: discord
+      matchers:
+        - severity="warning"
+      repeat_interval: 2m
+
+receivers:
+  - name: "null"
+  - name: discord
+    discord_configs:
+      - webhook_url_file: /run/secrets/discord_webhook_url
+        send_resolved: true
+        title: '{{ template "expo.title" . }}'
+        message: '{{ template "expo.message" . }}'

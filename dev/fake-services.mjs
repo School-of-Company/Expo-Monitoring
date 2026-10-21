@@ -20,6 +20,7 @@ const services = [
   { app: 'EXPO-ATTENTION-SERVER', id: 'attendance-1', port: 9108, rps: 8, errorRate: 0, path: '/actuator/prometheus', scrape: true },
 ];
 const hidden = new Set();
+let demoExhausted = false;
 
 // Demo logs: PM2-style files (<service>.log) that Alloy tails. The lines carry a
 // phone number, a long token and a trace id on purpose, to prove masking.
@@ -101,10 +102,32 @@ function render(s) {
     out.push('attendance_qr_entry_pending 0');
   }
   if (s.app === 'EXPO-FORM-SERVER') {
-    // form-1 has a stuck outbox (demo of the Grafana alert); form-2 is healthy.
-    out.push(`form_outbox_oldest_pending_age_seconds{outbox="form"} ${s.id === 'form-1' ? 900 : 0}`);
-    out.push('form_outbox_records{outbox="form",state="pending"} 3', 'form_outbox_records{outbox="form",state="published"} 100');
+    // Names and labels follow Expo-Form-Server src/metrics. form-1 has a stuck answer outbox
+    // (demo of the Grafana alert). POST /demo/exhausted/on|off toggles EXHAUSTED records (shared DB).
+    out.push(`form_outbox_oldest_pending_age_seconds{outbox="answer"} ${s.id === 'form-1' ? 900 : 0}`, 'form_outbox_oldest_pending_age_seconds{outbox="draw"} 0');
+    const exhausted = demoExhausted ? 2 : 0;
+    out.push('form_outbox_records{outbox="answer",state="received"} 3', 'form_outbox_records{outbox="answer",state="published"} 100', `form_outbox_records{outbox="answer",state="exhausted"} ${exhausted}`);
+    out.push('form_outbox_records{outbox="draw",state="unpublished"} 0', 'form_outbox_records{outbox="draw",state="exhausted"} 0');
     out.push('form_db_pool_connections{state="total"} 10', 'form_db_pool_connections{state="idle"} 8', 'form_db_pool_connections{state="waiting"} 0');
+    for (const outbox of ['answer', 'draw']) {
+      out.push(`form_outbox_relay_runs_total{outbox="${outbox}",result="ok"} ${s.total}`, `form_outbox_relay_runs_total{outbox="${outbox}",result="error"} 0`, `form_outbox_relay_runs_total{outbox="${outbox}",result="skipped"} 0`);
+      out.push(`form_outbox_publish_total{outbox="${outbox}",result="ok"} ${s.total}`, `form_outbox_publish_total{outbox="${outbox}",result="error"} 0`);
+    }
+    out.push('form_result_consumer_skipped_total{reason="unparsable"} 0', 'form_result_consumer_skipped_total{reason="unknown_status"} 0');
+    // Public survey routes (route templates).
+    for (const [method, publicUri] of [['GET', '/surveys/public/:expoId'], ['POST', '/surveys/answer/public/:expoId']]) {
+      out.push(`http_server_requests_seconds_count{method="${method}",status="200",uri="${publicUri}"} ${s.total}`);
+      BUCKETS.forEach((le, j) => out.push(`http_server_requests_seconds_bucket{method="${method}",status="200",uri="${publicUri}",le="${le}"} ${s.buckets[j]}`));
+      out.push(`http_server_requests_seconds_bucket{method="${method}",status="200",uri="${publicUri}",le="+Inf"} ${s.total}`);
+    }
+    // The metric's own `service` label (expo|user) collides with the Eureka label: Prometheus renames it exported_service.
+    for (const [downstream, operation] of [['expo', 'exists'], ['expo', 'find_period'], ['user', 'survey_answer_result']]) {
+      for (const outcome of ['success', 'not_found', 'conflict', 'timeout', 'failure']) {
+        out.push(`form_downstream_calls_seconds_count{service="${downstream}",operation="${operation}",outcome="${outcome}"} ${outcome === 'success' ? s.total : 0}`);
+      }
+      BUCKETS.forEach((le, j) => out.push(`form_downstream_calls_seconds_bucket{service="${downstream}",operation="${operation}",outcome="success",le="${le}"} ${s.buckets[j]}`));
+      out.push(`form_downstream_calls_seconds_bucket{service="${downstream}",operation="${operation}",outcome="success",le="+Inf"} ${s.total}`);
+    }
   }
   out.push('process_cpu_usage 0.12', 'jvm_memory_used_bytes{area="heap",id="G1 Eden Space"} 150000000', 'nodejs_eventloop_lag_seconds 0.001', 'nodejs_eventloop_lag_p99_seconds 0.002', 'process_resident_memory_bytes 50000000', 'nodejs_heap_size_used_bytes 10000000', `process_cpu_seconds_total ${s.total / 100}`);
   return out.join('\n') + '\n';
@@ -132,6 +155,11 @@ http
     }
     if (req.method === 'POST' && req.url === '/demo/form-2/show') {
       hidden.delete('form-2');
+      res.writeHead(204).end();
+      return;
+    }
+    if (req.method === 'POST' && (req.url === '/demo/exhausted/on' || req.url === '/demo/exhausted/off')) {
+      demoExhausted = req.url.endsWith('/on');
       res.writeHead(204).end();
       return;
     }
