@@ -16,6 +16,13 @@ jobs:
       GRAFANA_ADMIN_PASSWORD: local-demo-validation
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test digest
+        run: |
+          node --test "digest/*.test.mjs"
+          node dev/verify-digest.mjs
       - name: Validate Prometheus configuration and rules
         run: bash dev/validate-prometheus.sh
       - name: Verify discovery, RED records and dashboard queries

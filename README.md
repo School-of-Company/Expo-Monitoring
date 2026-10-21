@@ -82,3 +82,5 @@ docker compose -f docker-compose.yml -f docker-compose.demo.yml down
 - 실제 서비스 수집 여부는 배포된 Eureka metadata와 메트릭 listener에 달려 있습니다. Gateway metadata 변경과 Config Server 규약 이슈는 병합/완료되었지만, 현재 운영 targets와 서비스별 적용·배포 완료를 이 저장소의 로컬 검증으로 판단하지 않습니다.
 - 로컬 데모는 가짜 Eureka(XML)와 가짜 서비스를 씁니다.
 - 대시보드 JSON은 파일 프로비저닝이라 UI에서 수정해도 저장되지 않습니다.
+
+일일·주간 요약(Discord)은 [digest 안내](docs/digest.md)를 참고하세요.
