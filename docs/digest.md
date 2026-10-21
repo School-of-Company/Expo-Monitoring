@@ -22,7 +22,7 @@ Prometheus·Grafana·Loki를 읽어 Discord 웹훅으로 하루/한 주 요약�
 node digest/index.mjs once daily --dry-run   # 전송 없이 JSON payload + 마크다운 미리보기 (스냅샷 생성도 생략, 패널 렌더는 수행)
 node digest/index.mjs once weekly            # 한 번 전송
 node digest/index.mjs serve                  # 스케줄러 (기본 매일 09:00, 매주 MON 09:00, Asia/Seoul)
-node --test digest/                          # 단위 테스트
+node --test "digest/*.test.mjs"                          # 단위 테스트
 node dev/verify-digest.mjs                   # 가짜 Prometheus/Grafana/Loki/Discord 통합 검증
 ```
 

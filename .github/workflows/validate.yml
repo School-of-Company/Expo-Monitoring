@@ -21,7 +21,7 @@ jobs:
           node-version: 22
       - name: Test digest
         run: |
-          node --test digest/
+          node --test "digest/*.test.mjs"
           node dev/verify-digest.mjs
       - name: Validate Prometheus configuration and rules
         run: bash dev/validate-prometheus.sh
