@@ -1,0 +1,37 @@
+# Daily/weekly digest overlay (docs/digest.md). The base compose file is untouched.
+#   docker compose -f docker-compose.yml -f docker-compose.digest.yml up -d --build digest
+# Settings come from .env (see the digest section of .env.example). Empty values fall back to defaults.
+services:
+  digest:
+    build:
+      context: ./digest
+    environment:
+      PROMETHEUS_URL: ${PROMETHEUS_URL:-http://prometheus:9090}
+      GRAFANA_URL: ${GRAFANA_URL:-http://grafana:3000}
+      GRAFANA_PUBLIC_URL: ${GRAFANA_PUBLIC_URL:-}
+      GRAFANA_TOKEN: ${GRAFANA_TOKEN:-}
+      GRAFANA_USER: ${GRAFANA_USER:-}
+      GRAFANA_PASSWORD: ${GRAFANA_PASSWORD:-}
+      LOKI_URL: ${LOKI_URL:-}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      DIGEST_TZ: ${DIGEST_TZ:-}
+      DIGEST_DAILY_AT: ${DIGEST_DAILY_AT:-}
+      DIGEST_WEEKLY_AT: ${DIGEST_WEEKLY_AT:-}
+      DIGEST_DASHBOARD_UID: ${DIGEST_DASHBOARD_UID:-}
+      DIGEST_PANEL_IDS: ${DIGEST_PANEL_IDS:-}
+      DIGEST_LOKI_QUERY: ${DIGEST_LOKI_QUERY:-}
+      DIGEST_LOKI_LIMIT: ${DIGEST_LOKI_LIMIT:-}
+      DIGEST_SNAPSHOT_EXPIRES_SEC: ${DIGEST_SNAPSHOT_EXPIRES_SEC:-}
+      DIGEST_TOP_N: ${DIGEST_TOP_N:-}
+      DIGEST_LOG_TOP_N: ${DIGEST_LOG_TOP_N:-}
+      DIGEST_MIN_REQUESTS: ${DIGEST_MIN_REQUESTS:-}
+      DIGEST_5XX_WARN_PCT: ${DIGEST_5XX_WARN_PCT:-}
+      DIGEST_5XX_CRIT_PCT: ${DIGEST_5XX_CRIT_PCT:-}
+      DIGEST_P95_WARN_SEC: ${DIGEST_P95_WARN_SEC:-}
+      DIGEST_P95_CRIT_SEC: ${DIGEST_P95_CRIT_SEC:-}
+      DIGEST_OUTBOX_AGE_WARN_SEC: ${DIGEST_OUTBOX_AGE_WARN_SEC:-}
+      DIGEST_OUTBOX_AGE_CRIT_SEC: ${DIGEST_OUTBOX_AGE_CRIT_SEC:-}
+      DIGEST_POOL_WAITING_WARN: ${DIGEST_POOL_WAITING_WARN:-}
+    networks:
+      monitoring:
+    restart: unless-stopped
