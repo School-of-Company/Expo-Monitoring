@@ -27,6 +27,32 @@ services:
       monitoring:
     restart: unless-stopped
 
+  # Alertmanager -> Discord (docs/alerting.md). The webhook URL reaches the container only as a
+  # file under /run/secrets (compose secret from DISCORD_WEBHOOK_URL): not in the repo, the
+  # config, `docker inspect` env, logs or /api/v2/status. The template is rendered at start
+  # because Alertmanager expands no environment variables.
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /tmp/templates
+        sed "s|__GRAFANA_ROOT_URL__|$${GRAFANA_ROOT_URL}|g" /etc/alertmanager/templates/expo.tmpl > /tmp/templates/expo.tmpl
+        exec /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/alertmanager --web.listen-address=:9093 --cluster.listen-address=
+    environment:
+      GRAFANA_ROOT_URL: ${GRAFANA_ROOT_URL:-http://127.0.0.1:3001}
+    secrets:
+      - discord_webhook_url
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./alertmanager/templates:/etc/alertmanager/templates:ro
+      - alertmanager-data:/alertmanager
+    networks:
+      monitoring:
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:11.3.0
     depends_on:
@@ -118,9 +144,14 @@ services:
 networks:
   monitoring: {}
 
+secrets:
+  discord_webhook_url:
+    environment: DISCORD_WEBHOOK_URL
+
 volumes:
   loki-data:
   tempo-data:
   alloy-data:
   prometheus-data:
+  alertmanager-data:
   grafana-data:

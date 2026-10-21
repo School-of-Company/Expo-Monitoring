@@ -1,0 +1,201 @@
+rule_files:
+  - "../rules/recording.yml"
+  - "../rules/form.yml"
+evaluation_interval: '15s'
+tests:
+  # Outbox EXHAUSTED: fires after 5m, ignores outbox with 0, resolves once handled.
+  - interval: '15s'
+    input_series:
+      - series: 'form_outbox_records{service="expo-form-server",instance="a",outbox="answer",state="exhausted"}'
+        values: '2x40 0x60'
+      - series: 'form_outbox_records{service="expo-form-server",instance="b",outbox="answer",state="exhausted"}'
+        values: '2x40 0x60'
+      - series: 'form_outbox_records{service="expo-form-server",instance="a",outbox="draw",state="exhausted"}'
+        values: '0x100'
+      - series: 'form_outbox_records{service="expo-form-server",instance="a",outbox="answer",state="received"}'
+        values: '9x100'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: FormOutboxExhausted
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: FormOutboxExhausted
+        exp_alerts:
+          - exp_labels: {severity: critical, service: expo-form-server, outbox: answer}
+            exp_annotations:
+              summary: "answer outbox: 2 record(s) exhausted retries and need manual handling"
+              description: Records in the exhausted state are not retried any more. Resolve each one, then the gauge falls to 0.
+              dashboard_uid: expo-form
+              runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formoutboxexhausted
+      - eval_time: 20m
+        alertname: FormOutboxExhausted
+        exp_alerts: []
+
+  # Public survey 5xx and latency (only the two public routes), traffic floor.
+  - interval: '15s'
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="expo-form-server",method="GET",uri="/surveys/public/:expoId",status="200"}'
+        values: '0+27x100'
+      - series: 'http_server_requests_seconds_count{service="expo-form-server",method="GET",uri="/surveys/public/:expoId",status="503"}'
+        values: '0+3x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-form-server",method="GET",uri="/surveys/public/:expoId",le="2.5"}'
+        values: '0+28.5x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-form-server",method="GET",uri="/surveys/public/:expoId",le="+Inf"}'
+        values: '0+30x100'
+      # Another route with all 5xx must not fire the public survey alert.
+      - series: 'http_server_requests_seconds_count{service="expo-form-server",method="GET",uri="/forms/by-id/:formId",status="500"}'
+        values: '0+30x100'
+      # Quiet public route: 100% errors but below the traffic floor.
+      - series: 'http_server_requests_seconds_count{service="expo-form-server",method="POST",uri="/surveys/answer/public/:expoId",status="500"}'
+        values: '0+0.02x100'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: FormPublicSurveyHigh5xxRate
+        exp_alerts:
+          - exp_labels: {severity: critical, service: expo-form-server, uri: "/surveys/public/:expoId"}
+            exp_annotations:
+              summary: "/surveys/public/:expoId: public survey 5xx above 5% for 5 minutes"
+              description: On-site visitors cannot load or submit the public survey (5xx ratio above 5%, over 0.1 req/s).
+              dashboard_uid: expo-form
+              runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formpublicsurveyhigh5xxrate
+      - eval_time: 10m
+        alertname: FormPublicSurveyHighLatency
+        exp_alerts:
+          - exp_labels: {severity: warning, service: expo-form-server, uri: "/surveys/public/:expoId"}
+            exp_annotations:
+              summary: "/surveys/public/:expoId: public survey p95 above 2s for 5 minutes"
+              description: The public survey routes are slow under on-site load.
+              dashboard_uid: expo-form
+              runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formpublicsurveyhighlatency
+
+  # Healthy public survey and healthy overall latency: nothing fires.
+  - interval: '15s'
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="expo-form-server",method="GET",uri="/surveys/public/:expoId",status="200"}'
+        values: '0+30x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-form-server",method="GET",uri="/surveys/public/:expoId",le="0.5"}'
+        values: '0+30x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-form-server",method="GET",uri="/surveys/public/:expoId",le="+Inf"}'
+        values: '0+30x100'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: FormPublicSurveyHigh5xxRate
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: FormPublicSurveyHighLatency
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: FormHighLatency
+        exp_alerts: []
+
+  # Overall p95 above 1s (all requests land above 1s) with traffic.
+  - interval: '15s'
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="expo-form-server",method="GET",uri="/forms/by-id/:formId",status="200"}'
+        values: '0+30x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-form-server",method="GET",uri="/forms/by-id/:formId",le="1"}'
+        values: '0+0x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-form-server",method="GET",uri="/forms/by-id/:formId",le="5"}'
+        values: '0+30x100'
+      - series: 'http_server_requests_seconds_bucket{service="expo-form-server",method="GET",uri="/forms/by-id/:formId",le="+Inf"}'
+        values: '0+30x100'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: FormHighLatency
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: FormHighLatency
+        exp_alerts:
+          - exp_labels: {severity: warning, service: expo-form-server}
+            exp_annotations:
+              summary: "expo-form-server: HTTP p95 latency above 1s for 5 minutes"
+              description: The p95 of http_server_requests_seconds is above 1 second. Traffic floor 0.1 req/s.
+              dashboard_uid: expo-form
+              runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formhighlatency
+
+  # Result consumer skips: fires while the counter increases, resolves 10m after it stops.
+  - interval: '15s'
+    input_series:
+      - series: 'form_result_consumer_skipped_total{service="expo-form-server",instance="a",reason="unparsable"}'
+        values: '0+1x20 20x200'
+      - series: 'form_result_consumer_skipped_total{service="expo-form-server",instance="a",reason="unknown_status"}'
+        values: '0x220'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: FormResultConsumerSkipping
+        exp_alerts:
+          - exp_labels: {severity: warning, service: expo-form-server, reason: unparsable}
+            exp_annotations:
+              summary: "result consumer skipped messages (unparsable) in the last 10 minutes"
+              description: Skipped messages are dropped. Check the message producer and schema.
+              dashboard_uid: expo-form
+              runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formresultconsumerskipping
+      - eval_time: 30m
+        alertname: FormResultConsumerSkipping
+        exp_alerts: []
+
+  # Relay: 50% errors fires after 10m; skipped-only runs and a healthy relay do not.
+  - interval: '15s'
+    input_series:
+      - series: 'form_outbox_relay_runs_total{service="expo-form-server",instance="a",outbox="answer",result="ok"}'
+        values: '0+1x200'
+      - series: 'form_outbox_relay_runs_total{service="expo-form-server",instance="a",outbox="answer",result="error"}'
+        values: '0+1x200'
+      - series: 'form_outbox_relay_runs_total{service="expo-form-server",instance="a",outbox="draw",result="ok"}'
+        values: '0+4x200'
+      - series: 'form_outbox_relay_runs_total{service="expo-form-server",instance="a",outbox="draw",result="skipped"}'
+        values: '0+4x200'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: FormOutboxRelayFailing
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: FormOutboxRelayFailing
+        exp_alerts:
+          - exp_labels: {severity: warning, service: expo-form-server, outbox: answer}
+            exp_annotations:
+              summary: "answer outbox relay: more than 20% of runs fail for 10 minutes"
+              description: The relay run error ratio is above 20% (ok and error runs only).
+              dashboard_uid: expo-form
+              runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formoutboxrelayfailing
+
+  # Downstream: user failures+timeouts fire; expo only not_found/conflict does not; fast calls do not.
+  - interval: '15s'
+    input_series:
+      - series: 'form_downstream_calls_seconds_count{service="expo-form-server",exported_service="user",operation="survey_answer_result",outcome="timeout"}'
+        values: '0+3x100'
+      - series: 'form_downstream_calls_seconds_count{service="expo-form-server",exported_service="user",operation="survey_answer_result",outcome="success"}'
+        values: '0+15x100'
+      - series: 'form_downstream_calls_seconds_count{service="expo-form-server",exported_service="expo",operation="exists",outcome="not_found"}'
+        values: '0+15x100'
+      - series: 'form_downstream_calls_seconds_count{service="expo-form-server",exported_service="expo",operation="exists",outcome="conflict"}'
+        values: '0+15x100'
+      - series: 'form_downstream_calls_seconds_count{service="expo-form-server",exported_service="expo",operation="find_period",outcome="success"}'
+        values: '0+30x100'
+      - series: 'form_downstream_calls_seconds_bucket{service="expo-form-server",exported_service="expo",operation="find_period",le="2.5"}'
+        values: '0+0x100'
+      - series: 'form_downstream_calls_seconds_bucket{service="expo-form-server",exported_service="expo",operation="find_period",le="+Inf"}'
+        values: '0+30x100'
+      - series: 'form_downstream_calls_seconds_bucket{service="expo-form-server",exported_service="user",operation="survey_answer_result",le="0.1"}'
+        values: '0+15x100'
+      - series: 'form_downstream_calls_seconds_bucket{service="expo-form-server",exported_service="user",operation="survey_answer_result",le="+Inf"}'
+        values: '0+15x100'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: FormDownstreamFailures
+        exp_alerts:
+          - exp_labels: {severity: warning, service: expo-form-server, exported_service: user}
+            exp_annotations:
+              summary: "user: downstream failures/timeouts above 0.1/s for 2 minutes"
+              description: Calls from form to the expo/user service end as failure or timeout (not_found and conflict are not failures).
+              dashboard_uid: expo-form
+              runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formdownstreamfailures
+      - eval_time: 10m
+        alertname: FormDownstreamHighLatency
+        exp_alerts:
+          - exp_labels: {severity: warning, service: expo-form-server, exported_service: expo, operation: find_period}
+            exp_annotations:
+              summary: "expo/find_period: p95 call latency above 2s for 5 minutes"
+              description: The expo/user service responds slowly to form (traffic floor 0.1 calls/s).
+              dashboard_uid: expo-form
+              runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formdownstreamhighlatency

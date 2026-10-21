@@ -1,0 +1,15 @@
+{{ define "expo.title" -}}
+{{ if eq .Status "resolved" }}[RESOLVED]{{ else }}[{{ .CommonLabels.severity | toUpper }}]{{ end }} {{ .CommonLabels.alertname }}{{ with .CommonLabels.service }} ({{ . }}){{ end }}{{ if gt (len .Alerts) 1 }} x{{ len .Alerts }}{{ end }}
+{{- end }}
+
+{{ define "expo.message" -}}
+{{ range .Alerts -}}
+**{{ .Labels.alertname }}**{{ with .Labels.service }} | service: `{{ . }}`{{ end }}{{ with .Labels.instance }} | instance: `{{ . }}`{{ end }}
+{{ with .Annotations.summary }}{{ . }}{{ else }}{{ .Annotations.description }}{{ end }}
+{{ end -}}
+{{ with (index .Alerts 0).Annotations.dashboard_uid }}Dashboard: __GRAFANA_ROOT_URL__/d/{{ . }}
+{{ else }}Dashboard: __GRAFANA_ROOT_URL__/d/msa-overview
+{{ end -}}
+{{ with (index .Alerts 0).Annotations.runbook_url }}Runbook: {{ . }}
+{{ end -}}
+{{- end }}
