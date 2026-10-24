@@ -29,8 +29,10 @@ schema_config:
 
 limits_config:
   retention_period: ${LOKI_RETENTION_PERIOD:-168h}
-  # Label cardinality guard: the collector only emits service and level.
+  # Label cardinality guard: the collector only emits job, service and level.
   max_label_names_per_series: 8
+  # module and filename travel as structured metadata (docs/logging.md).
+  allow_structured_metadata: true
   # Loki would add service_name / detected_level on its own; keep labels fixed.
   discover_service_name: []
   discover_log_levels: false
