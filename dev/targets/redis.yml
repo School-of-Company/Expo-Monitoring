@@ -1,0 +1,5 @@
+# Demo only: the redis_exporter of docker-compose.demo.yml.
+- targets: ["redis-exporter:9121"]
+  labels:
+    service: expo-user-server
+    instance: demo-redis
