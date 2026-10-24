@@ -77,6 +77,15 @@
       "includeVars": false,
       "targetBlank": false,
       "icon": "dashboard"
+    },
+    {
+      "title": "로그",
+      "type": "link",
+      "url": "/d/expo-logs",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false,
+      "icon": "dashboard"
     }
   ],
   "schemaVersion": 39,
@@ -956,19 +965,22 @@
               "owner_service": true,
               "datname": true,
               "relname": true,
-              "Value": true
+              "Value": true,
+              "Value #A": true
             },
             "indexByName": {
               "owner_service": 0,
               "datname": 1,
               "relname": 2,
-              "Value": 3
+              "Value": 3,
+              "Value #A": 4
             },
             "renameByName": {
               "owner_service": "서비스",
               "datname": "DB",
               "relname": "테이블",
-              "Value": "초당 읽은 행"
+              "Value": "초당 읽은 행",
+              "Value #A": "초당 읽은 행"
             }
           }
         }

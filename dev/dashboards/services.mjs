@@ -145,6 +145,7 @@ function top(s) {
 export function serviceDashboard(s) {
   const links = [{ title: 'Expo / Overview', uid: 'expo-overview' }];
   if (s.domain) links.push(s.domain);
+  links.push({ title: `${s.label} 로그`, uid: 'expo-logs', query: `var-service=${s.name}` });
   return () =>
     dashboard({
       uid: `expo-svc-${s.short}`,
