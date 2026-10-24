@@ -49,6 +49,19 @@ Eureka 인스턴스에 `prometheus.scrape="true"`, 숫자 `prometheus.port`, 필
 - Prometheus `/-/ready`, `/api/v1/rules`, Grafana `/api/health`와 세 대시보드의 datasource 쿼리를 확인합니다. Alertmanager는 Compose(개발·검증용)에만 있고 **운영 서버 배포 방식은 미정**입니다([알림 문서](alerting.md)의 "운영 배포"). `deploy.yml`은 아직 `alertmanager/`를 올리지 않습니다.
 - 운영 확인 기록에는 시각, 배포 SHA, 대상 서비스·인스턴스, scrape 결과, 내부 접근 경로와 방화벽 조건만 남깁니다. 토큰·비밀번호·SSH 키는 기록하지 않습니다.
 
+## Verification status (2026-10-24)
+
+운영 Grafana(11.3.0)를 SSH 터널로 읽기 전용 조회한 결과입니다. 아무것도 바꾸지 않았습니다.
+
+- Prometheus 대상(job `eureka-services`) 7개 `up`: Attention, Report, Expo, User, Application(각 서비스 포트), Form, Gateway(메트릭 포트). Spring 5개는 저장소 설정이 아니라 서버 쪽 설정으로 `/actuator/prometheus`와 Eureka metadata가 켜져 있습니다.
+- **Notification은 수집되지 않습니다.** Eureka에 `127.0.0.1:expo-notification-server:26117`로 등록되지만 `prometheus.*` metadata가 없어 제외됩니다. Notification은 메트릭 listener 주소가 광고 IP와 같을 때만 metadata를 붙이므로, 서버의 `METRICS_ENABLED`/`METRICS_HOST`/`METRICS_PORT`를 확인해야 합니다.
+- HTTP 히스토그램(`http_server_requests_seconds_bucket`)은 Spring 5개와 Form에 있습니다(서비스별 p95 가능). Lettuce 지표는 User만 있고 Expo·Application은 아직 Redis 명령 기록이 없습니다.
+- Redis·Postgres exporter 대상은 없습니다(Overview의 캐시·DB 구역은 `prometheus/targets/*.yml`이 채워질 때까지 비어 있습니다).
+- **운영 Loki는 이 저장소의 Alloy 설정으로 수집되고 있지 않습니다.** 라벨이 `job="expo"`, `service`(PM2 이름: `attention`, `user`, …, `kafka`, `vault` 등 서버 전체), `service_name`, `stream`(out/err)이고 `level` 라벨이 없습니다. Form·Gateway·Notification 로그는 없습니다. [로그 표준](logging.md)의 라벨과 Logs 대시보드가 동작하려면 서버가 `alloy/config.alloy`로 PM2 로그 디렉터리를 수집해야 합니다.
+- PM2는 줄마다 `2026-10-24T20:39:06: ` 시각 접두어를 붙입니다. Alloy가 이를 걷어 냅니다([로그 표준](logging.md)).
+- 운영 Loki 데이터 소스는 UI에서 만든 것(`readOnly: false`, uid `eg1w5x8vr49hcd`, 이름 `Loki`)입니다. 저장소 프로비저닝은 같은 이름에 uid `loki`이므로, 릴리스 때 수동 데이터 소스를 정리하고 프로비저닝 데이터 소스(uid `loki`)가 쓰이는지 확인합니다. trace 링크·Tempo 연결·대시보드 기본값이 uid `loki`를 씁니다.
+- 운영 대시보드는 `main` 시점의 3개(Attendance, Gateway, MSA Service Overview)뿐입니다. develop의 Form·Overview·서비스별·Logs 대시보드는 릴리스 후 생깁니다.
+
 ## Verification status (2026-10-12)
 
 Attendance #8의 추가 로컬 검증 및 이번 작업에서 미확인인 운영 항목은 [Attendance 안내](attendance-monitoring.md)에 기록합니다. 아래는 #7 시점의 과거 기록입니다.

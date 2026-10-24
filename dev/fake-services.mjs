@@ -23,7 +23,7 @@ const hidden = new Set();
 let demoExhausted = false;
 
 // Demo logs in the Expo log standard (docs/logging.md): one JSON object per line.
-// expo-form-server writes a PM2-style file (production layout), expo-application-server
+// expo-form-server writes a PM2-style file (production layout, with PM2's "<time>: " prefix), expo-application-server
 // the local-profile mirror (<service>/app.log). The messages carry a phone number, a long
 // token and a trace id on purpose, to prove masking. legacy-out.log is a service that
 // does not follow the standard: its lines must arrive without service/level labels.
@@ -37,13 +37,15 @@ if (LOG_DIR) {
     (s) => entry(s, 'WARN', 'client', 'retry sms to 01098765432 Authorization: Bearer abcDEF123456789xyz'),
     (s) => entry(s, 'ERROR', 'outbox', `outbox publish failed token=${randomBytes(24).toString('hex')} trace=${randomBytes(16).toString('hex')}`),
   ];
+  // PM2 with a log date format prefixes each captured line with "<time>: " like production.
+  const pm2Prefix = () => `${new Date().toISOString().slice(0, 19)}: `;
   const files = {
-    'expo-form-server': `${LOG_DIR}/expo-form-server-out.log`,
-    'expo-application-server': `${LOG_DIR}/expo-application-server/app.log`,
+    'expo-form-server': { file: `${LOG_DIR}/expo-form-server-out.log`, prefix: pm2Prefix },
+    'expo-application-server': { file: `${LOG_DIR}/expo-application-server/app.log`, prefix: () => '' },
   };
   setInterval(() => {
-    for (const [name, file] of Object.entries(files)) {
-      appendFileSync(file, lines.map((l) => l(name)).join('\n') + '\n');
+    for (const [name, { file, prefix }] of Object.entries(files)) {
+      appendFileSync(file, lines.map((l) => prefix() + l(name)).join('\n') + '\n');
     }
     appendFileSync(`${LOG_DIR}/legacy-out.log`, `${new Date().toISOString()} ERROR [legacy] plain text line\n`);
   }, 2000);
