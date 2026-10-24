@@ -14,6 +14,7 @@ docker compose down         # -v 금지 (대시보드·시계열 볼륨 보존)
 - Prometheus·Grafana는 `127.0.0.1`에만 publish합니다. 서버에서는 SSH 포워딩으로 접속하세요.
 - 데모(실제 서비스 없이 확인, `!reset`을 지원하는 Docker Compose 필요): `docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d`
 - 데모는 네트워크 별칭 `eureka`와 컨테이너의 실제 IP를 사용합니다. 고정 서브넷·IP와 `EUREKA_HOST` 설정은 필요하지 않습니다.
+- 로그는 모든 서비스가 [로그 표준](docs/logging.md)(JSON 한 줄, `@timestamp`/`level`/`service`/`module`/`message`)을 따르고, 수집 파이프라인에 서비스별 fallback을 두지 않습니다.
 - 로그(Loki·Alloy)와 추적(Tempo, OTLP는 `127.0.0.1:4317/4318`)은 [로그와 추적](docs/logs-and-tracing.md), Discord 알림·그래프 이미지는 [Grafana 알림](docs/alerting.md)(런북: [docs/runbooks.md](docs/runbooks.md))을 참고하세요.
 - 새 서버의 환경 변수와 배포 점검은 [배포 환경 안내](docs/deployment-environment.md)를 참고하세요.
 

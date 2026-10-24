@@ -9,10 +9,10 @@ datasources:
     editable: false
     jsonData:
       maxLines: 1000
-      # Log line "... trace=<32 hex>" -> link to the trace in Tempo.
+      # "... trace=<32 hex>" in the message, or a JSON "traceId" key -> link to the trace in Tempo.
       derivedFields:
         - name: trace_id
-          matcherRegex: 'trace=([0-9a-f]{32})'
+          matcherRegex: '(?:trace=|"traceId":")([0-9a-f]{32})'
           url: '$${__value.raw}'
           urlDisplayLabel: Open trace
           datasourceUid: tempo

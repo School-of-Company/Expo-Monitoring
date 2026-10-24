@@ -186,13 +186,27 @@ await eventually('Loki datasource is healthy', async () => {
   assert.equal((await json(`${grafana}/api/datasources/uid/loki/health`, { Authorization: authorization })).status, 'OK');
 });
 
-await eventually('Loki has demo logs with only service/level labels and masked values', async () => {
+await eventually('Loki indexes only job/service/level, read from the standard JSON keys', async () => {
+  assert.deepEqual((await loki('/loki/api/v1/labels')).data.sort(), ['job', 'level', 'service']);
+  const services = (await loki('/loki/api/v1/label/service/values')).data;
+  for (const s of ['expo-form-server', 'expo-application-server']) assert(services.includes(s), s);
+  assert.deepEqual((await loki('/loki/api/v1/label/level/values')).data.sort(), ['ERROR', 'INFO', 'WARN']);
+  // module is structured metadata, filterable without being a label.
+  const outbox = await loki(`/loki/api/v1/query_range?query=${encodeURIComponent('{service="expo-application-server"} | module="outbox"')}&limit=5`);
+  assert(outbox.data.result.length > 0 && outbox.data.result.every((s) => s.stream.level === 'ERROR'), 'module filter');
+  // No fallback: a non-JSON file arrives with job only, never guessed service/level.
+  const legacy = await loki(`/loki/api/v1/query_range?query=${encodeURIComponent('{job="expo", service=""}')}&limit=5`);
+  assert(legacy.data.result.length > 0, 'non-standard lines should stay visible');
+  assert(legacy.data.result.every((s) => !s.stream.level && s.stream.filename?.endsWith('legacy-out.log')), 'non-standard labels');
+  const count = await loki(`/loki/api/v1/query?query=${encodeURIComponent('sum by (service) (count_over_time({service=~".+"}[5m]))')}`);
+  assert(count.data.result.length >= 2, 'count_over_time per service');
+});
+
+await eventually('Loki has demo logs with masked values', async () => {
   const query = encodeURIComponent('{service="expo-form-server"}');
   const result = await loki(`/loki/api/v1/query_range?query=${query}&limit=50`);
   const streams = result.data.result;
   assert(streams.length > 0, 'no streams');
-  const labels = new Set(streams.flatMap((stream) => Object.keys(stream.stream)));
-  assert.deepEqual([...labels].sort(), ['level', 'service']);
   const lines = streams.flatMap((stream) => stream.values.map((value) => value[1])).join('\n');
   assert(lines.includes('<phone>') && lines.includes('<token>'), 'masking placeholders missing');
   assert(!/01\d-?\d{3,4}-?\d{4}/.test(lines), 'phone number leaked');
