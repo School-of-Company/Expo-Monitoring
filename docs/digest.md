@@ -44,7 +44,7 @@ docker compose -f docker-compose.yml -f docker-compose.digest.yml up -d --build 
 | `GRAFANA_USER` / `GRAFANA_PASSWORD` | - | 토큰이 없을 때 기본 인증 |
 | `GRAFANA_PUBLIC_URL` | `GRAFANA_URL` | 본문 링크용 주소(사람이 여는 주소). 내부 주소와 다를 때 설정 |
 | `LOKI_URL` | - | 비우면 로그 구역 생략 |
-| `DIGEST_LOKI_QUERY` | `{level="error"}` | LogQL 선택자. 실제 라벨은 수집 설정에 맞춤 |
+| `DIGEST_LOKI_QUERY` | `{level="ERROR"}` | LogQL 선택자. 실제 라벨은 수집 설정에 맞춤 |
 | `DIGEST_LOKI_LIMIT` | `1000` | 가져올 로그 줄 상한(표본). 도달하면 "표본 상한 도달" 표시 |
 | `DISCORD_WEBHOOK_URL` | - | 전송 대상. 로그·오류·출력에 남기지 않음 |
 | `DIGEST_TZ` | `Asia/Seoul` | 스케줄·표시 시간대 |

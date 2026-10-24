@@ -10,7 +10,7 @@
 | `EUREKA_HOST` | `host-gateway` | `eureka` 이름에 매핑할 주소. Eureka가 Docker 호스트에서 실행되면 비워 두고, 다른 호스트라면 그 주소를 설정합니다. 포트는 변경하지 않습니다. |
 | `DISCORD_WEBHOOK_URL` | Grafana: 연결 불가 자리표시 주소 / Alertmanager: 빈 값 | Grafana 연락처와 Alertmanager(compose secret 파일)의 웹훅. 비밀이므로 서버 `.env`에만 둡니다. [알림 문서](alerting.md) |
 | `GRAFANA_ROOT_URL` | `http://127.0.0.1:3001` | 알림 메시지의 대시보드·패널·silence 링크 기준 주소 |
-| `LOG_DIR` | `./logs`(빈 디렉터리) | Alloy가 읽기 전용으로 마운트할 PM2 로그 디렉터리. `*.log`를 하위 경로까지 수집. 실제 경로는 서버에서 확인 |
+| `LOG_DIR` | `./logs`(빈 디렉터리) | Alloy가 읽기 전용으로 마운트할 로그 디렉터리. 운영은 PM2 로그 디렉터리, 로컬은 서비스의 `EXPO_LOG_DIR`(기본 `~/.expo/logs`). `*.log`를 하위 경로까지 수집. 실제 경로는 서버에서 확인. [로그 표준](logging.md) |
 | `LOKI_RETENTION_PERIOD` | `168h` | 로그 보존 기간 |
 | `TEMPO_RETENTION_PERIOD` | `168h` | 추적 보존 기간 |
 
@@ -18,7 +18,7 @@
 
 ## New server: binaries and pm2
 
-GitHub 워크플로는 `prometheus/`, `grafana/`만 묶어서 업로드합니다. `loki/`, `tempo/`, `alloy/`와 Loki·Tempo·Alloy·렌더러 서비스는 아직 이 배포 경로에 포함되어 있지 않아 서버에서 바이너리/pm2로 어떻게 띄울지 정해야 합니다(미확정, 서버의 Docker 사용 가능 여부도 미확인). `.env`와 `docker-compose.yml`을 전송하거나 실행하지 않으므로 Compose의 `GRAFANA_ADMIN_PASSWORD`, `EUREKA_HOST`가 서버 프로세스에 자동 적용되지 않습니다.
+GitHub 워크플로는 `prometheus/`, `grafana/`, `loki/`, `alloy/`를 묶어서 업로드합니다. 서버의 `deploy.sh`가 Loki·Alloy를 실행하고 경로·주소를 치환해야 하며([로그 표준](logging.md#운영-배포-미검증)), `tempo/`와 Tempo·렌더러 서비스는 아직 이 배포 경로에 포함되어 있지 않아 서버에서 바이너리/pm2로 어떻게 띄울지 정해야 합니다(미확정, 서버의 Docker 사용 가능 여부도 미확인). `.env`와 `docker-compose.yml`을 전송하거나 실행하지 않으므로 Compose의 `GRAFANA_ADMIN_PASSWORD`, `EUREKA_HOST`가 서버 프로세스에 자동 적용되지 않습니다.
 
 - Grafana는 서버에서 `GF_SECURITY_ADMIN_PASSWORD` 또는 Grafana 설정 파일의 `[security] admin_password`를 설정해야 합니다. 서버의 실제 설정 방식과 기존 관리자 비밀번호는 별도 확인이 필요합니다. 기존 DB의 비밀번호 변경은 Grafana 관리자 절차를 사용합니다.
 - Prometheus 설정의 Eureka 주소는 기본 `http://eureka:8761/eureka`입니다. 서버 배포 스크립트가 실제 주소로 변환하는지, 실제 포트·경로가 맞는지 배포 결과 파일에서 확인합니다. Compose 이름 해석을 바이너리 실행에 그대로 적용하지 않습니다.
