@@ -13,7 +13,7 @@
 
 ## 초기 임계값: 운영 합의 전 제안
 
-모두 warning이고 Prometheus UI Alerts 탭에만 표시됩니다. Alertmanager/Slack/메일은 없습니다. 비율·p95·downstream rate 창은 5분, 비교는 엄격한 `>`이며 경계값 자체는 알리지 않습니다.
+모두 warning이고 Prometheus UI Alerts 탭에 표시되며 Alertmanager를 통해 Discord로도 갑니다([알림 문서](alerting.md), warning은 4h 반복). 슬랙·메일은 없습니다. 비율·p95·downstream rate 창은 5분, 비교는 엄격한 `>`이며 경계값 자체는 알리지 않습니다.
 
 | 알림 | 조건 / 지속 | 근거와 한계 |
 |---|---|---|

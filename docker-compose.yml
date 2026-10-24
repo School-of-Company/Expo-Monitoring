@@ -2,7 +2,9 @@ name: expo-monitoring
 
 # Shared Prometheus + Grafana for the Expo MSA. Targets are discovered from
 # Eureka (prometheus.yml), so adding a service or an instance needs no change here.
-# Both UIs are published on loopback only - reach them with an SSH tunnel.
+# Everything is published on loopback only - reach the UIs with an SSH tunnel.
+# Loki, Alloy and the image renderer have no published ports; Tempo's OTLP
+# receivers are published on 127.0.0.1 so same-host PM2 services can send spans.
 services:
   prometheus:
     image: prom/prometheus:v2.55.1
@@ -25,15 +27,55 @@ services:
       monitoring:
     restart: unless-stopped
 
+  # Alertmanager -> Discord (docs/alerting.md). The webhook URL reaches the container only as a
+  # file under /run/secrets (compose secret from DISCORD_WEBHOOK_URL): not in the repo, the
+  # config, `docker inspect` env, logs or /api/v2/status. The template is rendered at start
+  # because Alertmanager expands no environment variables.
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /tmp/templates
+        sed "s|__GRAFANA_ROOT_URL__|$${GRAFANA_ROOT_URL}|g" /etc/alertmanager/templates/expo.tmpl > /tmp/templates/expo.tmpl
+        exec /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/alertmanager --web.listen-address=:9093 --cluster.listen-address=
+    environment:
+      GRAFANA_ROOT_URL: ${GRAFANA_ROOT_URL:-http://127.0.0.1:3001}
+    secrets:
+      - discord_webhook_url
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./alertmanager/templates:/etc/alertmanager/templates:ro
+      - alertmanager-data:/alertmanager
+    networks:
+      monitoring:
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:11.3.0
     depends_on:
       - prometheus
+      - loki
+      - tempo
+      - renderer
     ports:
       - "127.0.0.1:3001:3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      # Base of the dashboard/panel/silence links in alert messages (SSH-tunnel address by default).
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://127.0.0.1:3001}
+      # Discord webhook for the provisioned contact point (never commit the value).
+      # The fallback keeps Grafana starting when it is unset; notifications then fail.
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-http://127.0.0.1:9/discord-webhook-not-configured}
+      # Panel images in alert notifications (rendered by the renderer service).
+      GF_RENDERING_SERVER_URL: http://renderer:8081/render
+      GF_RENDERING_CALLBACK_URL: http://grafana:3000/
+      GF_UNIFIED_ALERTING_SCREENSHOTS_CAPTURE: "true"
+      # Dashboard snapshots stay on this Grafana (never published to snapshots.raintank.io).
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
@@ -42,9 +84,74 @@ services:
       monitoring:
     restart: unless-stopped
 
+  renderer:
+    image: grafana/grafana-image-renderer:3.11.6
+    environment:
+      ENABLE_METRICS: "false"
+    networks:
+      monitoring:
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.3.2
+    command:
+      - -config.file=/etc/loki/loki.yml
+      - -config.expand-env=true
+    environment:
+      LOKI_RETENTION_PERIOD: ${LOKI_RETENTION_PERIOD:-168h}
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    networks:
+      monitoring:
+    restart: unless-stopped
+
+  # Tails PM2 log files from the host (LOG_DIR) and ships them to Loki.
+  alloy:
+    image: grafana/alloy:v1.5.1
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    depends_on:
+      - loki
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ${LOG_DIR:-./logs}:/var/log/expo:ro
+      - alloy-data:/var/lib/alloy/data
+    networks:
+      monitoring:
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command:
+      - -config.file=/etc/tempo/tempo.yml
+      - -config.expand-env=true
+    environment:
+      TEMPO_RETENTION_PERIOD: ${TEMPO_RETENTION_PERIOD:-168h}
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    volumes:
+      - ./tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo-data:/var/tempo
+    networks:
+      monitoring:
+    restart: unless-stopped
+
 networks:
   monitoring: {}
 
+secrets:
+  discord_webhook_url:
+    environment: DISCORD_WEBHOOK_URL
+
 volumes:
+  loki-data:
+  tempo-data:
+  alloy-data:
   prometheus-data:
+  alertmanager-data:
   grafana-data:

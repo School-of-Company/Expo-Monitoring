@@ -1,0 +1,30 @@
+apiVersion: 1
+
+templates:
+  - orgId: 1
+    name: expo
+    template: |
+      {{ define "expo.title" -}}
+      {{ if eq .Status "firing" }}[FIRING:{{ .Alerts.Firing | len }}]{{ else }}[RESOLVED]{{ end }} {{ .CommonLabels.alertname }}{{ with .CommonLabels.service }} ({{ . }}){{ end }}
+      {{- end }}
+
+      {{ define "expo.alert" -}}
+      **{{ .Labels.service | reReplaceAll "^$" "-" }}** - {{ .Annotations.summary }}
+      {{ with .Values }}현재 값: {{ range $k, $v := . }}{{ if eq $k "B" }}{{ printf "%.3g" $v }}{{ end }}{{ end }}
+      {{ end -}}
+      {{ with .DashboardURL }}대시보드: {{ . }}
+      {{ end -}}
+      {{ with .PanelURL }}패널: {{ . }}
+      {{ end -}}
+      {{ with .Annotations.runbook_url }}런북: {{ . }}
+      {{ end -}}
+      {{ with .SilenceURL }}무음: {{ . }}
+      {{ end -}}
+      {{- end }}
+
+      {{ define "expo.message" -}}
+      {{ range .Alerts.Firing }}{{ template "expo.alert" . }}
+      {{ end }}
+      {{- range .Alerts.Resolved }}복구: {{ template "expo.alert" . }}
+      {{ end }}
+      {{- end }}

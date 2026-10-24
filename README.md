@@ -1,6 +1,6 @@
 # Expo-Monitoring
 
-Expo MSA 공용 모니터링 스택(Prometheus + Grafana). scrape 대상은 **Eureka 서비스 디스커버리**로 자동 수집하므로 서비스나 인스턴스가 늘어도 Prometheus 설정을 고치지 않습니다.
+Expo MSA 공용 모니터링 스택(Prometheus + Grafana + Loki + Tempo). scrape 대상은 **Eureka 서비스 디스커버리**로 자동 수집하므로 서비스나 인스턴스가 늘어도 Prometheus 설정을 고치지 않습니다.
 
 ## 실행
 
@@ -14,6 +14,8 @@ docker compose down         # -v 금지 (대시보드·시계열 볼륨 보존)
 - Prometheus·Grafana는 `127.0.0.1`에만 publish합니다. 서버에서는 SSH 포워딩으로 접속하세요.
 - 데모(실제 서비스 없이 확인, `!reset`을 지원하는 Docker Compose 필요): `docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d`
 - 데모는 네트워크 별칭 `eureka`와 컨테이너의 실제 IP를 사용합니다. 고정 서브넷·IP와 `EUREKA_HOST` 설정은 필요하지 않습니다.
+- 로그는 모든 서비스가 [로그 표준](docs/logging.md)(JSON 한 줄, `@timestamp`/`level`/`service`/`module`/`message`)을 따르고, 수집 파이프라인에 서비스별 fallback을 두지 않습니다.
+- 로그(Loki·Alloy)와 추적(Tempo, OTLP는 `127.0.0.1:4317/4318`)은 [로그와 추적](docs/logs-and-tracing.md), Discord 알림·그래프 이미지는 [Grafana 알림](docs/alerting.md)(런북: [docs/runbooks.md](docs/runbooks.md))을 참고하세요.
 - 새 서버의 환경 변수와 배포 점검은 [배포 환경 안내](docs/deployment-environment.md)를 참고하세요.
 
 기존 고정 서브넷(172.28.0.0/24)으로 Compose를 실행한 호스트는 업데이트 후 기존 네트워크를 먼저 제거하고 다시 시작합니다. 아래 `down`은 데이터 볼륨을 보존합니다. `-v`를 추가하지 마세요. 데모를 실행 중이었다면 두 명령 모두 `-f docker-compose.yml -f docker-compose.demo.yml`을 함께 사용합니다.
@@ -45,17 +47,19 @@ Spring(Micrometer)과 NestJS 모두 `http_server_requests_seconds{method,status,
 
 ## 알림 (`prometheus/rules/alerts.yml`)
 
-Alertmanager는 아직 없어서 Prometheus UI의 Alerts 탭에서만 확인합니다.
+이 규칙은 Alertmanager를 거쳐 Discord로 가고(복구 알림 포함), Prometheus UI의 Alerts 탭에서도 보입니다. 그래프 이미지가 붙는 Grafana 관리 알림 3개는 Alertmanager에서 제외해 중복되지 않습니다. 구성·웹훅 주입·운영 배포(미정)는 [알림 문서](docs/alerting.md)를 참고하세요.
 
 - `ServiceDown`: Eureka에 있는데 scrape가 1분간 실패. 크래시한 인스턴스를 Eureka가 evict하면 target이 사라져 알림도 해소되므로, 장애 기록으로 쓰지 마세요.
 - `ServiceHigh5xxRate`: 서비스별 5xx > 5% (5분), 요청률 0.1 req/s 미만이면 제외
 - Gateway 전용: `GatewayUpstream502Rate`, `GatewayNoHealthyInstances`, `GatewayEurekaPollFailing`. Expo-Gateway에서 가져왔고, `GatewayDown`·`GatewayHigh5xxRate`는 공통 룰이 대신합니다.
+- Form 전용(`form.yml`): 지연 p95, 공개 설문 5xx/p95, 아웃박스 EXHAUSTED, 결과 컨슈머 skip, 릴레이 실패율, 박람회·유저 호출 실패·지연. 아웃박스 정체와 DB 풀은 Grafana 알림이 담당합니다. 임계값은 제안입니다.
 - Attendance 전용: 회로 열림, 입구 5xx/p95, downstream failure, guard lock p95, QR pending. [계약·초기 임계값 근거·운영 미확인](docs/attendance-monitoring.md)을 참고하세요. 임계값은 운영 합의 전 제안입니다.
 
 ## 대시보드
 
 - **MSA Service Overview**: `$service` 변수로 전환하는 RED + 인스턴스 + 런타임(JVM/Node)
 - **Expo Gateway**: Gateway 전용 (Expo-Gateway 원본에서 가져왔으며, 공유 스택의 런타임 쿼리에는 `service="expo-gateway"` 필터를 추가했습니다. 원본 갱신 시 이 필터를 유지하세요)
+- **Expo Form**: 요청 RED, 공개 설문 경로(`/surveys/public`, `/surveys/answer/public`), 아웃박스 상태·나이, 릴레이, 결과 컨슈머 skip, DB 연결 풀, 박람회·유저 호출. 패널 1·2는 Grafana 알림의 이미지용이라 id를 바꾸지 않습니다.
 - **Expo Attendance**: 입구 스캔 RED, name별 회로, 대상/outcome별 호출, kind별 락 대기, QR backlog. 실제 Eureka 이름은 `expo-attention-server`입니다.
 
 ## 검증
@@ -66,17 +70,19 @@ bash dev/validate-prometheus.sh
 
 설정 검사에는 `/etc/prometheus/rules` 마운트가 필요합니다. 빠지면 설정의 절대 경로 glob이 룰 파일을 찾지 못해도 검사가 통과할 수 있습니다.
 
-데모를 실행한 뒤 실제 Prometheus의 자동 대상 추가·삭제, opt-in 제외, 공통 RED와 Grafana의 세 대시보드 쿼리를 검사합니다. 기존 Grafana 볼륨을 사용한다면 `GRAFANA_ADMIN_PASSWORD`는 현재 관리자 비밀번호와 같아야 합니다.
+데모를 실행한 뒤 실제 Prometheus의 자동 대상 추가·삭제, opt-in 제외, 공통 RED와 Grafana의 대시보드 쿼리, Alertmanager 연결, Loki 로그 수집·마스킹, Tempo의 OTLP 조회, 알림 프로비저닝과 가짜 웹훅의 이미지 첨부, 스냅샷 설정을 검사합니다(알림 발화를 기다려 약 4분 걸립니다). 기존 Grafana 볼륨을 사용한다면 `GRAFANA_ADMIN_PASSWORD`는 현재 관리자 비밀번호와 같아야 합니다.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.demo.yml exec -T -e GRAFANA_ADMIN_PASSWORD fake-services node /app/verify-demo.mjs
 docker compose -f docker-compose.yml -f docker-compose.demo.yml down
 ```
 
-`Validate monitoring` CI는 PR과 `develop` push에서 같은 검사를 실행합니다. 유휴 카운터와 5xx 시계열이 없는 서비스의 오류 비율은 0으로 기록하고, 전체 요청 시계열이 없는 서비스는 생성하지 않습니다. 룰 테스트는 저트래픽 알림 억제와 공통·Gateway 전용 알림도 검사합니다.
+Alertmanager→(가짜)Discord의 발화·그룹·반복·복구·중복 없음은 `dev/verify-alertmanager.mjs`로 수동 확인합니다(약 10분, 사용법은 [알림 문서](docs/alerting.md)). `Validate monitoring` CI는 PR과 `develop` push에서 같은 검사를 실행합니다. 유휴 카운터와 5xx 시계열이 없는 서비스의 오류 비율은 0으로 기록하고, 전체 요청 시계열이 없는 서비스는 생성하지 않습니다. 룰 테스트는 저트래픽 알림 억제와 공통·Gateway 전용 알림도 검사합니다.
 
 ## 한계
 
 - 실제 서비스 수집 여부는 배포된 Eureka metadata와 메트릭 listener에 달려 있습니다. Gateway metadata 변경과 Config Server 규약 이슈는 병합/완료되었지만, 현재 운영 targets와 서비스별 적용·배포 완료를 이 저장소의 로컬 검증으로 판단하지 않습니다.
 - 로컬 데모는 가짜 Eureka(XML)와 가짜 서비스를 씁니다.
 - 대시보드 JSON은 파일 프로비저닝이라 UI에서 수정해도 저장되지 않습니다.
+
+일일·주간 요약(Discord)은 [digest 안내](docs/digest.md)를 참고하세요.
