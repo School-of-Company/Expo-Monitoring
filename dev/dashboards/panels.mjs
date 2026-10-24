@@ -108,6 +108,37 @@ export function stat(title, queries, { unit = 'short', w = 6, h = 5, description
   };
 }
 
+/** A single ratio (0..1) as a dial, e.g. heap used against its limit. */
+export function gauge(title, expr, { w = 6, h = 5, description, thresholds, ds = PROMETHEUS } = {}) {
+  return {
+    type: 'gauge',
+    title,
+    ...(description ? { description } : {}),
+    datasource: ds,
+    size: { w, h },
+    targets: [target(ds, expr, '', { instant: true })],
+    fieldConfig: {
+      defaults: {
+        unit: 'percentunit',
+        min: 0,
+        max: 1,
+        decimals: 1,
+        thresholds: thresholds ?? {
+          mode: 'absolute',
+          steps: [
+            { color: 'green', value: null },
+            { color: 'yellow', value: 0.7 },
+            { color: 'red', value: 0.85 },
+          ],
+        },
+        color: { mode: 'thresholds' },
+      },
+      overrides: [],
+    },
+    options: { reduceOptions: { calcs: ['lastNotNull'], fields: '', values: false }, showThresholdMarkers: true },
+  };
+}
+
 /** Instant query shown as a table, keeping only the listed labels (renamed to Korean headers). */
 export function table(title, expr, columns, { w = 12, h = 8, description, ds = PROMETHEUS, unit } = {}) {
   const keep = Object.keys(columns);
@@ -161,12 +192,22 @@ export const RATIO_THRESHOLDS = {
   ],
 };
 
-export function dashboard({ uid, title, description, panels, variables, tags = ['expo'] }) {
+/** links: [{ title, uid }] to other dashboards, keeping the time range and variables. */
+export function dashboard({ uid, title, description, panels, variables, tags = ['expo'], links = [] }) {
   return {
     uid,
     title,
     description,
     tags,
+    links: links.map((link) => ({
+      title: link.title,
+      type: 'link',
+      url: `/d/${link.uid}`,
+      keepTime: true,
+      includeVars: false,
+      targetBlank: false,
+      icon: 'dashboard',
+    })),
     schemaVersion: 39,
     version: 1,
     editable: false,

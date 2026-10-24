@@ -5,6 +5,80 @@
   "tags": [
     "expo"
   ],
+  "links": [
+    {
+      "title": "참여",
+      "type": "link",
+      "url": "/d/expo-svc-attention",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false,
+      "icon": "dashboard"
+    },
+    {
+      "title": "유저",
+      "type": "link",
+      "url": "/d/expo-svc-user",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false,
+      "icon": "dashboard"
+    },
+    {
+      "title": "박람회",
+      "type": "link",
+      "url": "/d/expo-svc-expo",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false,
+      "icon": "dashboard"
+    },
+    {
+      "title": "리포트",
+      "type": "link",
+      "url": "/d/expo-svc-report",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false,
+      "icon": "dashboard"
+    },
+    {
+      "title": "신청",
+      "type": "link",
+      "url": "/d/expo-svc-application",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false,
+      "icon": "dashboard"
+    },
+    {
+      "title": "게이트웨이",
+      "type": "link",
+      "url": "/d/expo-svc-gateway",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false,
+      "icon": "dashboard"
+    },
+    {
+      "title": "폼",
+      "type": "link",
+      "url": "/d/expo-svc-form",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false,
+      "icon": "dashboard"
+    },
+    {
+      "title": "알림",
+      "type": "link",
+      "url": "/d/expo-svc-notification",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false,
+      "icon": "dashboard"
+    }
+  ],
   "schemaVersion": 39,
   "version": 1,
   "editable": false,

@@ -9,15 +9,16 @@ import { networkInterfaces } from 'node:os';
 const HOST = process.env.ADVERTISE_IP ?? Object.values(networkInterfaces()).flat().find((address) => address.family === 'IPv4' && !address.internal)?.address ?? '127.0.0.1';
 const BUCKETS = [0.05, 0.1, 0.25, 0.5, 1];
 
+// runtime: which default metrics the service exposes (Spring Micrometer or Node prom-client).
 const services = [
-  { app: 'EXPO-FORM-SERVER', id: 'form-1', port: 9101, rps: 8, errorRate: 0.01, path: '/actuator/prometheus', scrape: true },
-  { app: 'EXPO-FORM-SERVER', id: 'form-2', port: 9102, rps: 8, errorRate: 0.01, path: '/actuator/prometheus', scrape: true },
-  { app: 'EXPO-APPLICATION-SERVER', id: 'application-1', port: 9103, rps: 5, errorRate: 0.1, scrape: true },
-  { app: 'EXPO-REPORT-SERVER', id: 'report-1', port: 9104, rps: 1, errorRate: 0, scrape: false },
-  { app: 'EXPO-GATEWAY', id: 'gateway-1', port: 9105, rps: 8, errorRate: 0, scrape: true },
-  { app: 'NO-PORT', id: 'no-port', port: 9106, rps: 1, errorRate: 0, scrape: true, omitPort: true },
-  { app: 'NO-OPT-IN', id: 'no-opt-in', port: 9107, rps: 1, errorRate: 0, omitScrape: true },
-  { app: 'EXPO-ATTENTION-SERVER', id: 'attendance-1', port: 9108, rps: 8, errorRate: 0, path: '/actuator/prometheus', scrape: true },
+  { app: 'EXPO-FORM-SERVER', id: 'form-1', port: 9101, rps: 8, errorRate: 0.01, path: '/actuator/prometheus', scrape: true, runtime: 'node' },
+  { app: 'EXPO-FORM-SERVER', id: 'form-2', port: 9102, rps: 8, errorRate: 0.01, path: '/actuator/prometheus', scrape: true, runtime: 'node' },
+  { app: 'EXPO-APPLICATION-SERVER', id: 'application-1', port: 9103, rps: 5, errorRate: 0.1, scrape: true, runtime: 'jvm' },
+  { app: 'EXPO-REPORT-SERVER', id: 'report-1', port: 9104, rps: 1, errorRate: 0, scrape: false, runtime: 'jvm' },
+  { app: 'EXPO-GATEWAY', id: 'gateway-1', port: 9105, rps: 8, errorRate: 0, scrape: true, runtime: 'node' },
+  { app: 'NO-PORT', id: 'no-port', port: 9106, rps: 1, errorRate: 0, scrape: true, omitPort: true, runtime: 'jvm' },
+  { app: 'NO-OPT-IN', id: 'no-opt-in', port: 9107, rps: 1, errorRate: 0, omitScrape: true, runtime: 'jvm' },
+  { app: 'EXPO-ATTENTION-SERVER', id: 'attendance-1', port: 9108, rps: 8, errorRate: 0, path: '/actuator/prometheus', scrape: true, runtime: 'jvm' },
 ];
 const hidden = new Set();
 let demoExhausted = false;
@@ -70,6 +71,54 @@ setInterval(() => {
     }
   }
 }, 1000);
+
+// Runtime metrics with the names and labels the real services expose (Spring Boot 4.1 Micrometer, prom-client 15).
+function jvmMetrics(s) {
+  const out = [
+    'process_cpu_usage 0.12',
+    'jvm_memory_used_bytes{area="heap",id="G1 Eden Space"} 150000000',
+    'jvm_memory_used_bytes{area="heap",id="G1 Old Gen"} 90000000',
+    'jvm_memory_used_bytes{area="nonheap",id="Metaspace"} 80000000',
+    'jvm_memory_committed_bytes{area="heap",id="G1 Eden Space"} 200000000',
+    'jvm_memory_committed_bytes{area="heap",id="G1 Old Gen"} 150000000',
+    // G1 reports -1 (no limit) for the young spaces; only the old gen has a max.
+    'jvm_memory_max_bytes{area="heap",id="G1 Eden Space"} -1',
+    'jvm_memory_max_bytes{area="heap",id="G1 Old Gen"} 536870912',
+    'jvm_gc_overhead 0.01',
+    `jvm_gc_memory_allocated_bytes_total ${s.total * 200000}`,
+    'jvm_threads_live_threads 42',
+    'jvm_threads_daemon_threads 30',
+    'jvm_threads_peak_threads 45',
+    'hikaricp_connections_active{pool="HikariPool-1"} 2',
+    'hikaricp_connections_idle{pool="HikariPool-1"} 8',
+    'hikaricp_connections_pending{pool="HikariPool-1"} 0',
+    'hikaricp_connections_max{pool="HikariPool-1"} 10',
+  ];
+  if (s.app === 'EXPO-APPLICATION-SERVER') {
+    for (const operation of ['GET', 'SET']) {
+      out.push(`lettuce_seconds_count{db_operation="${operation}",db_system="redis"} ${s.total}`, `lettuce_seconds_sum{db_operation="${operation}",db_system="redis"} ${s.total * 0.0004}`);
+    }
+  }
+  return out;
+}
+
+function nodeMetrics(s) {
+  return [
+    'nodejs_eventloop_lag_seconds 0.001',
+    'nodejs_eventloop_lag_p50_seconds 0.0011',
+    'nodejs_eventloop_lag_p99_seconds 0.002',
+    'process_resident_memory_bytes 50000000',
+    'nodejs_heap_size_used_bytes 10000000',
+    'nodejs_heap_size_total_bytes 16000000',
+    `process_cpu_seconds_total ${s.total / 100}`,
+    `nodejs_gc_duration_seconds_sum{kind="minor"} ${s.total / 5000}`,
+    `nodejs_gc_duration_seconds_count{kind="minor"} ${s.total / 10}`,
+    `nodejs_gc_duration_seconds_sum{kind="major"} ${s.total / 20000}`,
+    `nodejs_gc_duration_seconds_count{kind="major"} ${s.total / 100}`,
+    'nodejs_active_handles_total 12',
+    'nodejs_active_requests_total 0',
+  ];
+}
 
 function render(s) {
   const out = [];
@@ -139,7 +188,7 @@ function render(s) {
       out.push(`form_downstream_calls_seconds_bucket{service="${downstream}",operation="${operation}",outcome="success",le="+Inf"} ${s.total}`);
     }
   }
-  out.push('process_cpu_usage 0.12', 'jvm_memory_used_bytes{area="heap",id="G1 Eden Space"} 150000000', 'nodejs_eventloop_lag_seconds 0.001', 'nodejs_eventloop_lag_p99_seconds 0.002', 'process_resident_memory_bytes 50000000', 'nodejs_heap_size_used_bytes 10000000', `process_cpu_seconds_total ${s.total / 100}`);
+  out.push(...(s.runtime === 'jvm' ? jvmMetrics(s) : nodeMetrics(s)));
   return out.join('\n') + '\n';
 }
 
