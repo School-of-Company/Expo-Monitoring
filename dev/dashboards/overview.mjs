@@ -67,8 +67,8 @@ export function overview() {
       }),
       row('캐시·DB'),
       stat('데이터 저장소 수집 상태', [
-        ['max by (service, instance) (redis_up)', 'Redis {{instance}}'],
-        ['max by (service, instance) (pg_up)', 'Postgres {{instance}}'],
+        ['max by (owner_service, instance) (redis_up)', 'Redis {{instance}}'],
+        ['max by (owner_service, instance) (pg_up)', 'Postgres {{instance}}'],
       ], {
         w: 6,
         h: 8,
@@ -78,7 +78,7 @@ export function overview() {
         colorMode: 'background',
         textMode: 'value_and_name',
       }),
-      stat('Redis 캐시 히트율', [['redis:keyspace_hit_ratio:rate5m', '{{service}} {{instance}}']], {
+      stat('Redis 캐시 히트율', [['redis:keyspace_hit_ratio:rate5m', '{{owner_service}} {{instance}}']], {
         w: 6,
         h: 8,
         unit: 'percentunit',
@@ -88,36 +88,36 @@ export function overview() {
         colorMode: 'background',
         textMode: 'value_and_name',
       }),
-      timeseries('Redis 캐시 히트율 추이', [['redis:keyspace_hit_ratio:rate5m', '{{service}} {{instance}}']], {
+      timeseries('Redis 캐시 히트율 추이', [['redis:keyspace_hit_ratio:rate5m', '{{owner_service}} {{instance}}']], {
         unit: 'percentunit',
         min: 0,
         max: 1,
       }),
-      timeseries('Postgres 버퍼 캐시 히트율', [['pg:buffer_cache_hit_ratio:rate5m', '{{service}} {{datname}}']], {
+      timeseries('Postgres 버퍼 캐시 히트율', [['pg:buffer_cache_hit_ratio:rate5m', '{{owner_service}} {{datname}}']], {
         unit: 'percentunit',
         max: 1,
         description: '필요한 블록 중 디스크를 읽지 않고 shared buffers에서 찾은 비율(blks_hit ÷ (hit + read)).',
       }),
-      timeseries('Postgres 인덱스 스캔 비율', [['pg:index_scan_ratio:rate5m', '{{service}} {{datname}}']], {
+      timeseries('Postgres 인덱스 스캔 비율', [['pg:index_scan_ratio:rate5m', '{{owner_service}} {{datname}}']], {
         unit: 'percentunit',
         max: 1,
         description: '사용자 테이블 스캔 중 인덱스 스캔의 비율(idx_scan ÷ (idx_scan + seq_scan)). 바쁜 DB에서 낮으면 인덱스가 빠졌을 수 있습니다. 작은 테이블은 일부러 순차 스캔합니다.',
       }),
-      timeseries('Postgres 인덱스 블록 히트율', [['pg:index_block_hit_ratio:rate5m', '{{service}} {{datname}}']], {
+      timeseries('Postgres 인덱스 블록 히트율', [['pg:index_block_hit_ratio:rate5m', '{{owner_service}} {{datname}}']], {
         unit: 'percentunit',
         max: 1,
         description: '인덱스 블록 중 shared buffers에서 찾은 비율(idx_blocks_hit ÷ (hit + read)).',
       }),
       table(
         '순차 스캔으로 읽은 행이 많은 테이블 (5분)',
-        'topk(10, sum by (service, datname, relname) (rate(pg_stat_user_tables_seq_tup_read[5m])) > 0)',
-        { service: '서비스', datname: 'DB', relname: '테이블', Value: '초당 읽은 행' },
+        'topk(10, sum by (owner_service, datname, relname) (rate(pg_stat_user_tables_seq_tup_read[5m])) > 0)',
+        { owner_service: '서비스', datname: 'DB', relname: '테이블', Value: '초당 읽은 행' },
         { description: '순차 스캔으로 읽은 행 수 상위 10개 테이블. 인덱스 후보를 찾을 때 봅니다.', unit: 'short' },
       ),
-      timeseries('Redis 메모리 사용량', [['max by (service, instance) (redis_memory_used_bytes)', '{{service}} {{instance}}']], {
+      timeseries('Redis 메모리 사용량', [['max by (owner_service, instance) (redis_memory_used_bytes)', '{{owner_service}} {{instance}}']], {
         unit: 'bytes',
       }),
-      timeseries('Redis 초당 축출 키 수', [['sum by (service, instance) (rate(redis_evicted_keys_total[5m]))', '{{service}} {{instance}}']], {
+      timeseries('Redis 초당 축출 키 수', [['sum by (owner_service, instance) (rate(redis_evicted_keys_total[5m]))', '{{owner_service}} {{instance}}']], {
         unit: 'short',
         description: 'maxmemory에 닿아 지워진 키. 0이 아니면 캐시가 메모리에 비해 큽니다.',
       }),

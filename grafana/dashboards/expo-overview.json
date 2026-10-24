@@ -481,7 +481,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (service, instance) (redis_up)",
+          "expr": "max by (owner_service, instance) (redis_up)",
           "legendFormat": "Redis {{instance}}",
           "instant": true
         },
@@ -491,7 +491,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (service, instance) (pg_up)",
+          "expr": "max by (owner_service, instance) (pg_up)",
           "legendFormat": "Postgres {{instance}}",
           "instant": true
         }
@@ -573,7 +573,7 @@
             "uid": "${datasource}"
           },
           "expr": "redis:keyspace_hit_ratio:rate5m",
-          "legendFormat": "{{service}} {{instance}}",
+          "legendFormat": "{{owner_service}} {{instance}}",
           "instant": true
         }
       ],
@@ -642,7 +642,7 @@
             "uid": "${datasource}"
           },
           "expr": "redis:keyspace_hit_ratio:rate5m",
-          "legendFormat": "{{service}} {{instance}}"
+          "legendFormat": "{{owner_service}} {{instance}}"
         }
       ],
       "fieldConfig": {
@@ -697,7 +697,7 @@
             "uid": "${datasource}"
           },
           "expr": "pg:buffer_cache_hit_ratio:rate5m",
-          "legendFormat": "{{service}} {{datname}}"
+          "legendFormat": "{{owner_service}} {{datname}}"
         }
       ],
       "fieldConfig": {
@@ -751,7 +751,7 @@
             "uid": "${datasource}"
           },
           "expr": "pg:index_scan_ratio:rate5m",
-          "legendFormat": "{{service}} {{datname}}"
+          "legendFormat": "{{owner_service}} {{datname}}"
         }
       ],
       "fieldConfig": {
@@ -805,7 +805,7 @@
             "uid": "${datasource}"
           },
           "expr": "pg:index_block_hit_ratio:rate5m",
-          "legendFormat": "{{service}} {{datname}}"
+          "legendFormat": "{{owner_service}} {{datname}}"
         }
       ],
       "fieldConfig": {
@@ -858,7 +858,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(10, sum by (service, datname, relname) (rate(pg_stat_user_tables_seq_tup_read[5m])) > 0)",
+          "expr": "topk(10, sum by (owner_service, datname, relname) (rate(pg_stat_user_tables_seq_tup_read[5m])) > 0)",
           "legendFormat": "",
           "instant": true,
           "format": "table"
@@ -879,19 +879,19 @@
           "id": "organize",
           "options": {
             "includeByName": {
-              "service": true,
+              "owner_service": true,
               "datname": true,
               "relname": true,
               "Value": true
             },
             "indexByName": {
-              "service": 0,
+              "owner_service": 0,
               "datname": 1,
               "relname": 2,
               "Value": 3
             },
             "renameByName": {
-              "service": "서비스",
+              "owner_service": "서비스",
               "datname": "DB",
               "relname": "테이블",
               "Value": "초당 읽은 행"
@@ -921,8 +921,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "max by (service, instance) (redis_memory_used_bytes)",
-          "legendFormat": "{{service}} {{instance}}"
+          "expr": "max by (owner_service, instance) (redis_memory_used_bytes)",
+          "legendFormat": "{{owner_service}} {{instance}}"
         }
       ],
       "fieldConfig": {
@@ -974,8 +974,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (service, instance) (rate(redis_evicted_keys_total[5m]))",
-          "legendFormat": "{{service}} {{instance}}"
+          "expr": "sum by (owner_service, instance) (rate(redis_evicted_keys_total[5m]))",
+          "legendFormat": "{{owner_service}} {{instance}}"
         }
       ],
       "fieldConfig": {

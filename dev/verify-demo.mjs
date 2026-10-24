@@ -121,13 +121,15 @@ await eventually('Attendance label collision, outcome separation and healthy rul
   assert(rules.filter((rule) => rule.type === 'alerting').every((rule) => rule.state === 'inactive'));
 });
 
-await eventually('Datastore exporters from target files, owning service label and hit ratios', async () => {
+await eventually('Datastore exporters from target files, owner_service label and hit ratios', async () => {
   const active = (await allTargets()).filter((target) => ['redis', 'postgres'].includes(target.labels.job));
-  assert.deepEqual(active.map((target) => `${target.labels.job}:${target.labels.service}:${target.labels.instance}`).sort(), [
+  assert.deepEqual(active.map((target) => `${target.labels.job}:${target.labels.owner_service}:${target.labels.instance}`).sort(), [
     'postgres:expo-form-server:demo-postgres',
     'redis:expo-user-server:demo-redis',
   ]);
   assert(active.every((target) => target.health === 'up'));
+  // Exporters also expose process_* metrics: a `service` label would put them into that service's runtime panels.
+  assert.equal((await query('count({job=~"redis|postgres",service!=""})')).length, 0, 'datastore series must not carry service');
   // The demo load is 90% Redis hits and 3 index scans to 1 sequential scan.
   const redis = await query('redis:keyspace_hit_ratio:rate5m');
   assert.equal(redis.length, 1);
@@ -135,7 +137,7 @@ await eventually('Datastore exporters from target files, owning service label an
   for (const record of ['pg:buffer_cache_hit_ratio:rate5m', 'pg:index_scan_ratio:rate5m', 'pg:index_block_hit_ratio:rate5m']) {
     const samples = await query(`${record}{datname="expo_demo"}`);
     assert.equal(samples.length, 1, record);
-    assert.equal(samples[0].metric.service, 'expo-form-server', record);
+    assert.equal(samples[0].metric.owner_service, 'expo-form-server', record);
     const value = Number(samples[0].value[1]);
     assert(value > 0 && value <= 1, `${record} ${value}`);
   }
