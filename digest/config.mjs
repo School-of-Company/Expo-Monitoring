@@ -13,7 +13,7 @@ export function loadConfig(env = process.env) {
     grafanaUser: str(env.GRAFANA_USER),
     grafanaPassword: str(env.GRAFANA_PASSWORD),
     lokiUrl: str(env.LOKI_URL),
-    lokiQuery: str(env.DIGEST_LOKI_QUERY, '{level="error"}'),
+    lokiQuery: str(env.DIGEST_LOKI_QUERY, '{level="ERROR"}'),
     lokiLimit: num(env.DIGEST_LOKI_LIMIT, 1000),
     discordWebhookUrl: str(env.DISCORD_WEBHOOK_URL),
     dashboardUid: str(env.DIGEST_DASHBOARD_UID, 'msa-overview'),

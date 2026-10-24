@@ -1,9 +1,19 @@
 // Tails *.log under /var/log/expo (LOG_DIR on the host) and pushes to Loki.
-// Labels are fixed to service and level on purpose: phone numbers, tokens and
-// request ids must never become labels (cardinality and personal data).
+//   - production: LOG_DIR = the PM2 log directory (<service>-out.log, <service>-error.log)
+//   - local dev:  LOG_DIR = EXPO_LOG_DIR of the services (<service>/app.log, written with the local profile)
+//
+// Every service writes the Expo log standard (docs/logging.md): one JSON object per
+// line with @timestamp, level (uppercase), service, module and message. This pipeline
+// reads exactly those keys and has NO per-service fallback: a service whose lines do
+// not parse is fixed in the service, not here. Such lines still arrive (job label only,
+// no service/level) so they show up instead of being dropped.
+//
+// Labels are only job, service and level: phone numbers, tokens and request ids must
+// never become labels (cardinality and personal data). module and filename are
+// structured metadata (queryable, not indexed).
 
 local.file_match "expo" {
-  path_targets = [{"__path__" = "/var/log/expo/**/*.log"}]
+  path_targets = [{"__path__" = "/var/log/expo/**/*.log", "job" = "expo"}]
   sync_period  = "10s"
 }
 
@@ -14,30 +24,33 @@ loki.source.file "expo" {
 }
 
 loki.process "expo" {
-  // service: file name without PM2 suffixes (-out, -error, -N), e.g.
-  // expo-form-server-out.log -> expo-form-server. Lower-cased.
-  stage.regex {
-    source     = "filename"
-    expression = "/(?P<service>[^/]+?)(?:[-_.](?:out|error|err|stdout|stderr))?(?:-[0-9]+)?\\.log$"
-  }
-  stage.template {
-    source   = "service"
-    template = "{{ ToLower .Value }}"
-  }
-  stage.labels {
-    values = { service = "" }
+  stage.json {
+    expressions = {
+      level     = "",
+      service   = "",
+      module    = "",
+      timestamp = "\"@timestamp\"",
+    }
   }
 
-  // level: first level keyword in the line, lower-cased; "unknown" if none.
-  stage.regex {
-    expression = "(?i)\\b(?P<level>trace|debug|info|warn|warning|error|fatal)\\b"
+  stage.timestamp {
+    source = "timestamp"
+    format = "RFC3339Nano"
   }
-  stage.template {
-    source   = "level"
-    template = "{{ if .Value }}{{ ToLower .Value }}{{ else }}unknown{{ end }}"
-  }
+
   stage.labels {
-    values = { level = "" }
+    values = {
+      service = "",
+      level   = "",
+    }
+  }
+
+  // filename points at the offending file when a line does not follow the standard.
+  stage.structured_metadata {
+    values = {
+      module   = "",
+      filename = "",
+    }
   }
 
   // Masking. Order matters: tokens first, then phone numbers. 32-hex trace ids

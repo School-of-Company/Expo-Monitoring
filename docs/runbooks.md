@@ -7,7 +7,7 @@
 서비스의 5xx 비율이 5%를 넘고 요청률이 0.1 req/s 이상인 상태가 5분 지속.
 
 1. 알림의 `service`와 패널(5xx ratio by service)에서 시작 시각과 인스턴스를 봅니다.
-2. Grafana Explore의 Loki에서 `{service="<서비스>", level="error"}`로 같은 시각의 오류를 보고, `trace=` 링크로 Tempo 트레이스를 엽니다.
+2. Grafana Explore의 Loki에서 `{service="<서비스>", level="ERROR"}`로 같은 시각의 오류를 보고, `trace=` 링크로 Tempo 트레이스를 엽니다.
 3. 직전 배포·설정 변경 여부, 의존 서비스(DB, 다른 MSA)의 상태를 확인합니다.
 4. 배포 직후라면 롤백을 먼저 검토합니다.
 
@@ -41,7 +41,7 @@ Form 서비스 전체 HTTP p95가 1초를 넘은 상태가 5분 지속(요청률
 공개 설문(`/surveys/public/:expoId`, `/surveys/answer/public/:expoId`)의 5xx가 5%를 넘은 상태가 5분 지속. 현장 방문객이 설문을 열거나 제출하지 못합니다.
 
 1. 알림의 `uri`로 조회/제출 중 어느 쪽인지 확인합니다.
-2. Loki `{service="expo-form-server", level="error"}`로 같은 시각의 오류를 봅니다.
+2. Loki `{service="expo-form-server", level="ERROR"}`로 같은 시각의 오류를 봅니다.
 3. DB 풀 대기, 박람회 서비스 호출 실패(`FormDownstreamFailures`)가 원인인지 확인합니다.
 4. 현장에서 즉시 영향이 크므로 직전 배포 롤백을 먼저 검토합니다.
 
