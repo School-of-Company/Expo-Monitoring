@@ -57,7 +57,8 @@ Spring(Micrometer)과 NestJS 모두 `http_server_requests_seconds{method,status,
 
 ## 대시보드
 
-- **MSA Service Overview**: `$service` 변수로 전환하는 RED + 인스턴스 + 런타임(JVM/Node)
+- **Expo / Overview** (`expo-overview`): 전 서비스 수집 상태 타일, 요청·5xx·평균 응답 시간, 활성 알림, JVM·Node 힙, Redis 캐시 히트율과 Postgres 버퍼·인덱스 히트율([캐시·DB 히트율](docs/datastore-monitoring.md)). `dev/dashboards/`에서 생성하므로 JSON을 직접 고치지 말고 `node dev/dashboards/build.mjs`를 실행합니다(CI가 `--check`로 검사).
+- **MSA Service Overview**: `$service` 변수로 전환하는 RED + 인스턴스 + 런타임(JVM/Node). digest가 패널 이미지를 쓰므로 그대로 둡니다.
 - **Expo Gateway**: Gateway 전용 (Expo-Gateway 원본에서 가져왔으며, 공유 스택의 런타임 쿼리에는 `service="expo-gateway"` 필터를 추가했습니다. 원본 갱신 시 이 필터를 유지하세요)
 - **Expo Form**: 요청 RED, 공개 설문 경로(`/surveys/public`, `/surveys/answer/public`), 아웃박스 상태·나이, 릴레이, 결과 컨슈머 skip, DB 연결 풀, 박람회·유저 호출. 패널 1·2는 Grafana 알림의 이미지용이라 id를 바꾸지 않습니다.
 - **Expo Attendance**: 입구 스캔 RED, name별 회로, 대상/outcome별 호출, kind별 락 대기, QR backlog. 실제 Eureka 이름은 `expo-attention-server`입니다.

@@ -26,7 +26,12 @@ async function eventually(label, check, timeoutMs = 120_000) {
   throw failure;
 }
 
+// Eureka-discovered targets only; the datastore exporters (jobs redis/postgres) are checked on their own.
 async function targets() {
+  return (await allTargets()).filter((target) => target.labels.job === 'eureka-services');
+}
+
+async function allTargets() {
   return (await json(`${prometheus}/api/v1/targets`)).data.activeTargets;
 }
 
@@ -37,7 +42,8 @@ async function query(expression) {
 }
 
 await eventually('Eureka opt-in, paths, healthy scrapes and exclusions', async () => {
-  const { activeTargets: active, droppedTargets: dropped } = (await json(`${prometheus}/api/v1/targets`)).data;
+  const { droppedTargets: dropped } = (await json(`${prometheus}/api/v1/targets`)).data;
+  const active = await targets();
   assert.deepEqual(active.map((target) => target.labels.instance).sort(), ['application-1', 'attendance-1', 'form-1', 'form-2', 'gateway-1']);
   assert(active.every((target) => target.health === 'up'));
   assert(active.find((target) => target.labels.instance === 'form-1').scrapeUrl.endsWith('/actuator/prometheus'));
@@ -81,9 +87,9 @@ await eventually('common RED records and zero-error gateway', async () => {
   assert((await query('gateway_http_requests_total{service="expo-gateway"}')).length > 0);
 });
 
-await eventually('all fourteen recording and nineteen alert rules loaded, Alertmanager connected', async () => {
+await eventually('all eighteen recording and nineteen alert rules loaded, Alertmanager connected', async () => {
   const rules = (await json(`${prometheus}/api/v1/rules`)).data.groups.flatMap((group) => group.rules);
-  assert.equal(rules.length, 33);
+  assert.equal(rules.length, 37);
   assert(rules.every((rule) => rule.health === 'ok'));
   const alertmanagers = (await json(`${prometheus}/api/v1/alertmanagers`)).data.activeAlertmanagers;
   assert(alertmanagers.some((am) => am.url.startsWith('http://alertmanager:9093/')));
@@ -115,11 +121,35 @@ await eventually('Attendance label collision, outcome separation and healthy rul
   assert(rules.filter((rule) => rule.type === 'alerting').every((rule) => rule.state === 'inactive'));
 });
 
+await eventually('Datastore exporters from target files, owner_service label and hit ratios', async () => {
+  const active = (await allTargets()).filter((target) => ['redis', 'postgres'].includes(target.labels.job));
+  assert.deepEqual(active.map((target) => `${target.labels.job}:${target.labels.owner_service}:${target.labels.instance}`).sort(), [
+    'postgres:expo-form-server:demo-postgres',
+    'redis:expo-user-server:demo-redis',
+  ]);
+  assert(active.every((target) => target.health === 'up'));
+  // Exporters also expose process_* metrics: a `service` label would put them into that service's runtime panels.
+  assert.equal((await query('count({job=~"redis|postgres",service!=""})')).length, 0, 'datastore series must not carry service');
+  // The demo load is 90% Redis hits and 3 index scans to 1 sequential scan.
+  const redis = await query('redis:keyspace_hit_ratio:rate5m');
+  assert.equal(redis.length, 1);
+  assert(Number(redis[0].value[1]) > 0.8 && Number(redis[0].value[1]) < 1, `redis ratio ${redis[0].value[1]}`);
+  for (const record of ['pg:buffer_cache_hit_ratio:rate5m', 'pg:index_scan_ratio:rate5m', 'pg:index_block_hit_ratio:rate5m']) {
+    const samples = await query(`${record}{datname="expo_demo"}`);
+    assert.equal(samples.length, 1, record);
+    assert.equal(samples[0].metric.owner_service, 'expo-form-server', record);
+    const value = Number(samples[0].value[1]);
+    assert(value > 0 && value <= 1, `${record} ${value}`);
+  }
+  const scanRatio = Number((await query('pg:index_scan_ratio:rate5m{datname="expo_demo"}'))[0].value[1]);
+  assert(scanRatio > 0.5 && scanRatio < 1, `index scan ratio ${scanRatio}`);
+});
+
 await eventually('Grafana provisioned dashboards and datasource', async () => {
   const health = await json(`${grafana}/api/health`);
   assert.equal(health.database, 'ok');
   const dashboards = await json(`${grafana}/api/search?type=dash-db`, { Authorization: authorization });
-  assert.equal(dashboards.length, 4);
+  assert.equal(dashboards.length, 5);
   for (const dashboard of dashboards) {
     const model = (await json(`${grafana}/api/dashboards/uid/${dashboard.uid}`, { Authorization: authorization })).dashboard;
     for (const target of model.panels.flatMap((panel) => panel.targets ?? [])) {
@@ -132,6 +162,11 @@ await eventually('Grafana provisioned dashboards and datasource', async () => {
         assert(response.data.result.every((sample) => Number.isFinite(Number(sample.value[1]))), expression);
       }
       if (model.title === 'Expo Form') assert(response.data.result.length > 0, expression);
+      // Overview: every panel has data in the demo except the alert table (no alert fires).
+      if (model.uid === 'expo-overview' && !expression.startsWith('ALERTS')) {
+        assert(response.data.result.length > 0, expression);
+        assert(response.data.result.every((sample) => Number.isFinite(Number(sample.value[1]))), expression);
+      }
       if (model.title === 'Expo Gateway' && /gateway_http_requests_total\{status="502"\}/.test(expression)) {
         assert(response.data.result.length > 0, expression);
         assert(response.data.result.every((sample) => sample.value[1] === '0'), expression);
