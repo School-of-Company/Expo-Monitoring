@@ -9,15 +9,16 @@
 
 ## 로그 수집
 
-- `LOG_DIR`에 서버의 로그 디렉터리를 지정하면 Alloy가 읽기 전용으로 마운트하고 하위 경로까지 `*.log`를 모두 수집합니다. 미설정이면 `./logs`(비어 있음)를 마운트합니다. PM2 기본 위치는 `~/.pm2/logs`이지만 실제 경로는 서버에서 확인해 정합니다.
-- `service` 라벨은 파일 이름에서 뽑습니다. `expo-form-server-out.log`, `expo-form-server-error.log`, `expo-form-server.log` 모두 `expo-form-server`입니다(`-out`/`-error`/`-숫자` 접미사 제거, 소문자). **Prometheus의 `service`(Eureka 앱 이름 소문자)와 같게 파일 이름을 맞추세요.**
-- 라벨은 `service`와 `level`(줄에서 찾은 TRACE/DEBUG/INFO/WARN/ERROR/FATAL, 없으면 `unknown`) 둘뿐입니다. 전화번호·토큰·요청 ID·trace id를 라벨로 만들지 않습니다(카디널리티와 개인정보).
+- 서비스는 [로그 표준](logging.md)대로 JSON 한 줄(`@timestamp`, `level`, `service`, `module`, `message`)을 씁니다. Alloy는 이 키만 읽고 서비스별 보정(파일명에서 서비스 추측, 레벨 단어 검색)은 하지 않습니다.
+- `LOG_DIR`에 서버의 로그 디렉터리를 지정하면 Alloy가 읽기 전용으로 마운트하고 하위 경로까지 `*.log`를 모두 수집합니다. 미설정이면 `./logs`(비어 있음)를 마운트합니다. 운영은 PM2 로그 디렉터리(기본 `~/.pm2/logs`, 서버에서 확인), 로컬은 서비스의 `EXPO_LOG_DIR`(기본 `~/.expo/logs`)입니다.
+- 라벨은 `job`(`expo` 고정), `service`, `level`(JSON 값 그대로, 대문자) 셋뿐입니다. `module`과 `filename`은 structured metadata입니다. 전화번호·토큰·요청 ID·trace id를 라벨로 만들지 않습니다(카디널리티와 개인정보).
+- 표준을 어긴 줄은 `{job="expo", service=""}`로 보입니다. 파이프라인이 아니라 해당 서비스를 고칩니다.
 - Loki가 자동으로 붙이는 `service_name`, `detected_level`은 꺼 두었습니다.
-- 줄 단위 로그를 전제로 합니다. 여러 줄 스택 트레이스는 줄마다 별개 항목이 됩니다. 필요하면 서비스가 JSON 한 줄로 남기세요.
+- 줄 단위 로그를 전제로 합니다. 스택 트레이스는 JSON 한 줄 안(`stack_trace`)에 들어갑니다.
 
 ## trace id 규약
 
-로그 줄에 `trace=<32자 소문자 hex>`를 남기면 Grafana Explore의 Loki 로그에 "Open trace" 링크가 생겨 Tempo 트레이스로 이동합니다(`derivedFields`, 정규식 `trace=([0-9a-f]{32})`). 반대로 Tempo 트레이스에서 "Logs"를 누르면 같은 서비스의 로그를 시간 ±5분 범위로 `trace=<id>` 필터와 함께 엽니다. 이때 OTLP 리소스 속성 `service.name`이 위 `service` 라벨과 같아야 합니다.
+메시지에 `trace=<32자 소문자 hex>`를 남기거나 JSON 키 `"traceId":"<32자 hex>"`를 두면 Grafana Explore의 Loki 로그에 "Open trace" 링크가 생겨 Tempo 트레이스로 이동합니다(`derivedFields`, 정규식 `(?:trace=|"traceId":")([0-9a-f]{32})`). 반대로 Tempo 트레이스에서 "Logs"를 누르면 같은 서비스의 로그를 시간 ±5분 범위로 `trace=<id>` 필터와 함께 엽니다. 이때 OTLP 리소스 속성 `service.name`이 위 `service` 라벨과 같아야 합니다.
 
 ## 추적 보내기
 
@@ -47,7 +48,7 @@ Alloy 파이프라인(`alloy/config.alloy`)이 Loki로 보내기 전에 줄을 �
 
 ## 로컬 확인
 
-데모는 가짜 서비스가 `expo-form-server.log`, `expo-application-server.log`에 전화번호·토큰이 섞인 줄을 쓰고 Alloy가 읽습니다. `dev/verify-demo.mjs`가 Loki 라벨·마스킹과 OTLP→Tempo 조회를 검사합니다. 수동 확인:
+데모는 가짜 서비스가 표준 JSON 줄(전화번호·토큰 포함)을 PM2 형식 `expo-form-server-out.log`와 로컬 미러 형식 `expo-application-server/app.log`에, 표준을 어긴 평문 줄을 `legacy-out.log`에 쓰고 Alloy가 읽습니다. `dev/verify-demo.mjs`가 Loki 라벨(`job`/`service`/`level`만), 대문자 레벨, `module` 필터, 표준 위반 줄의 노출, 마스킹과 OTLP→Tempo 조회를 검사합니다. 수동 확인:
 
 ```bash
 # 로그: Grafana 프록시 경유 (admin 계정)

@@ -22,20 +22,30 @@ const services = [
 const hidden = new Set();
 let demoExhausted = false;
 
-// Demo logs: PM2-style files (<service>.log) that Alloy tails. The lines carry a
-// phone number, a long token and a trace id on purpose, to prove masking.
+// Demo logs in the Expo log standard (docs/logging.md): one JSON object per line.
+// expo-form-server writes a PM2-style file (production layout), expo-application-server
+// the local-profile mirror (<service>/app.log). The messages carry a phone number, a long
+// token and a trace id on purpose, to prove masking. legacy-out.log is a service that
+// does not follow the standard: its lines must arrive without service/level labels.
 const LOG_DIR = process.env.LOG_DIR;
 if (LOG_DIR) {
-  mkdirSync(LOG_DIR, { recursive: true });
+  mkdirSync(`${LOG_DIR}/expo-application-server`, { recursive: true });
+  const entry = (service, level, module, message) =>
+    JSON.stringify({ '@timestamp': new Date().toISOString(), level, service, module, message });
   const lines = [
-    (s) => `${new Date().toISOString()} INFO  [${s}] form submitted phone=010-1234-5678 trace=${randomBytes(16).toString('hex')}`,
-    (s) => `${new Date().toISOString()} WARN  [${s}] retry sms to 01098765432 Authorization: Bearer abcDEF123456789xyz`,
-    (s) => `${new Date().toISOString()} ERROR [${s}] outbox publish failed token=${randomBytes(24).toString('hex')} trace=${randomBytes(16).toString('hex')}`,
+    (s) => entry(s, 'INFO', 'survey', `form submitted phone=010-1234-5678 trace=${randomBytes(16).toString('hex')}`),
+    (s) => entry(s, 'WARN', 'client', 'retry sms to 01098765432 Authorization: Bearer abcDEF123456789xyz'),
+    (s) => entry(s, 'ERROR', 'outbox', `outbox publish failed token=${randomBytes(24).toString('hex')} trace=${randomBytes(16).toString('hex')}`),
   ];
+  const files = {
+    'expo-form-server': `${LOG_DIR}/expo-form-server-out.log`,
+    'expo-application-server': `${LOG_DIR}/expo-application-server/app.log`,
+  };
   setInterval(() => {
-    for (const name of ['expo-form-server', 'expo-application-server']) {
-      appendFileSync(`${LOG_DIR}/${name}.log`, lines.map((l) => l(name)).join('\n') + '\n');
+    for (const [name, file] of Object.entries(files)) {
+      appendFileSync(file, lines.map((l) => l(name)).join('\n') + '\n');
     }
+    appendFileSync(`${LOG_DIR}/legacy-out.log`, `${new Date().toISOString()} ERROR [legacy] plain text line\n`);
   }, 2000);
 }
 
