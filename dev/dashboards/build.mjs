@@ -6,8 +6,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { overview } from './overview.mjs';
 import { SERVICES, serviceDashboard } from './services.mjs';
+import { logsDashboard } from './logs.mjs';
 
-const DASHBOARDS = [overview, ...SERVICES.map(serviceDashboard)];
+const DASHBOARDS = [overview, ...SERVICES.map(serviceDashboard), logsDashboard];
 
 const outDir = fileURLToPath(new URL('../../grafana/dashboards/', import.meta.url));
 const check = process.argv.includes('--check');

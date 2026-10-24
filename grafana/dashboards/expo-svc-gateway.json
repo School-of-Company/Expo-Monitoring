@@ -24,6 +24,15 @@
       "includeVars": false,
       "targetBlank": false,
       "icon": "dashboard"
+    },
+    {
+      "title": "게이트웨이 로그",
+      "type": "link",
+      "url": "/d/expo-logs?var-service=expo-gateway",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false,
+      "icon": "dashboard"
     }
   ],
   "schemaVersion": 39,
@@ -550,15 +559,18 @@
           "options": {
             "includeByName": {
               "app": true,
-              "Value": true
+              "Value": true,
+              "Value #A": true
             },
             "indexByName": {
               "app": 0,
-              "Value": 1
+              "Value": 1,
+              "Value #A": 2
             },
             "renameByName": {
               "app": "라우트(app)",
-              "Value": "초당 요청"
+              "Value": "초당 요청",
+              "Value #A": "초당 요청"
             }
           }
         }
