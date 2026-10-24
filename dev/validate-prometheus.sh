@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-promtool() { docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p:ro" -v "$PWD/prometheus/rules:/etc/prometheus/rules:ro" prom/prometheus:v2.55.1 "$@"; }
+promtool() { docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p:ro" -v "$PWD/prometheus/rules:/etc/prometheus/rules:ro" -v "$PWD/prometheus/targets:/etc/prometheus/targets:ro" prom/prometheus:v2.55.1 "$@"; }
 promtool check config /p/prometheus.yml
-promtool check rules /p/rules/recording.yml /p/rules/alerts.yml /p/rules/attendance.yml /p/rules/form.yml
-promtool test rules /p/tests/rules.test.yml /p/tests/attendance.test.yml /p/tests/form.test.yml
+promtool check rules /p/rules/recording.yml /p/rules/alerts.yml /p/rules/attendance.yml /p/rules/form.yml /p/rules/datastore.yml
+promtool test rules /p/tests/rules.test.yml /p/tests/attendance.test.yml /p/tests/form.test.yml /p/tests/datastore.test.yml
 
 # Loki config and Alloy pipeline syntax (Tempo has no offline verify; the demo run covers it).
 docker run --rm -v "$PWD/loki:/c:ro" grafana/loki:3.3.2 -config.file=/c/loki.yml -config.expand-env=true -verify-config

@@ -1,0 +1,6 @@
+# One redis_exporter per Redis instance. Example:
+# - targets: ["127.0.0.1:9121"]
+#   labels:
+#     service: expo-user-server
+#     instance: user-redis
+[]

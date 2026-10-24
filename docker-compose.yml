@@ -18,6 +18,7 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
+      - ./prometheus/targets:/etc/prometheus/targets:ro
       - prometheus-data:/prometheus
     # prometheus.yml queries http://eureka:8761. Point that name at your Eureka
     # host (EUREKA_HOST in .env). host-gateway = Eureka runs on the Docker host.

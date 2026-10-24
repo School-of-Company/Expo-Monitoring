@@ -1,0 +1,37 @@
+# Cache and index hit ratios from redis_exporter and postgres_exporter (jobs redis / postgres,
+# targets in prometheus/targets/*.yml, see docs/datastore-monitoring.md). `service` is the owning
+# service set on the target.
+#
+# A ratio exists only while there is traffic (`> 0` on the denominator): an idle store has no
+# ratio, not a misleading 0% or 100%.
+groups:
+  - name: datastore
+    rules:
+      # Redis: GET-type lookups that found the key / all lookups.
+      - record: redis:keyspace_hit_ratio:rate5m
+        expr: |
+          sum by (service, instance) (rate(redis_keyspace_hits_total[5m]))
+          /
+          (sum by (service, instance) (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) > 0)
+
+      # Postgres: blocks served from shared buffers / all blocks needed (hit + read from disk).
+      - record: pg:buffer_cache_hit_ratio:rate5m
+        expr: |
+          sum by (service, instance, datname) (rate(pg_stat_database_blks_hit{datname!~"template0|template1"}[5m]))
+          /
+          (sum by (service, instance, datname) (rate(pg_stat_database_blks_hit{datname!~"template0|template1"}[5m]) + rate(pg_stat_database_blks_read{datname!~"template0|template1"}[5m])) > 0)
+
+      # Postgres: index scans / all scans (index + sequential) on user tables. A low value on a
+      # busy database points at missing indexes; small tables are often scanned sequentially on purpose.
+      - record: pg:index_scan_ratio:rate5m
+        expr: |
+          sum by (service, instance, datname) (rate(pg_stat_user_tables_idx_scan[5m]))
+          /
+          (sum by (service, instance, datname) (rate(pg_stat_user_tables_idx_scan[5m]) + rate(pg_stat_user_tables_seq_scan[5m])) > 0)
+
+      # Postgres: index blocks served from shared buffers / all index blocks needed.
+      - record: pg:index_block_hit_ratio:rate5m
+        expr: |
+          sum by (service, instance, datname) (rate(pg_statio_user_tables_idx_blocks_hit[5m]))
+          /
+          (sum by (service, instance, datname) (rate(pg_statio_user_tables_idx_blocks_hit[5m]) + rate(pg_statio_user_tables_idx_blocks_read[5m])) > 0)

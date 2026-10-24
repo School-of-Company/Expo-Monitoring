@@ -1,0 +1,6 @@
+# One postgres_exporter per database server (DATA_SOURCE_NAME). Example:
+# - targets: ["127.0.0.1:9187"]
+#   labels:
+#     service: expo-form-server
+#     instance: form-db
+[]
