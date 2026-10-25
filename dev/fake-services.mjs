@@ -91,6 +91,10 @@ function jvmMetrics(s) {
     `jvm_gc_pause_seconds_count{action="end of minor GC",cause="G1 Evacuation Pause",gc="G1 Young Generation"} ${s.total / 10}`,
     `jvm_gc_pause_seconds_sum{action="end of minor GC",cause="G1 Evacuation Pause",gc="G1 Young Generation"} ${s.total / 2000}`,
     'jvm_gc_pause_seconds_max{action="end of minor GC",cause="G1 Evacuation Pause",gc="G1 Young Generation"} 0.011',
+    // SLO buckets the services publish (management.metrics.distribution.slo.jvm.gc.pause): every pause lands in 25 ms.
+    ...['0.001', '0.005', '0.01', '0.025', '0.05', '0.1', '0.25', '0.5', '1.0', '2.0', '+Inf'].map(
+      (le) => `jvm_gc_pause_seconds_bucket{action="end of minor GC",cause="G1 Evacuation Pause",gc="G1 Young Generation",le="${le}"} ${le === '+Inf' || Number(le) >= 0.025 ? s.total / 10 : 0}`,
+    ),
     `jvm_gc_memory_allocated_bytes_total ${s.total * 200000}`,
     'jvm_threads_live_threads 42',
     'jvm_threads_daemon_threads 30',
