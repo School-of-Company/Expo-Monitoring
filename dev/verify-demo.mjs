@@ -95,7 +95,7 @@ await eventually('Form downstream label collision becomes exported_service and f
   assert.deepEqual([...new Set(samples.map((sample) => sample.metric.exported_service))].sort(), ['expo', 'user']);
   assert.deepEqual([...new Set(samples.map((sample) => sample.metric.outcome))].sort(), ['conflict', 'failure', 'not_found', 'success', 'timeout']);
   const rules = (await json(`${prometheus}/api/v1/rules`)).data.groups.find((group) => group.name === 'form').rules;
-  assert.equal(rules.filter((rule) => rule.type === 'alerting').length, 8);
+  assert.equal(rules.filter((rule) => rule.type === 'alerting').length, 10);
   assert(rules.filter((rule) => rule.type === 'alerting').every((rule) => rule.state === 'inactive'));
 });
 
