@@ -87,6 +87,10 @@ function jvmMetrics(s) {
     'jvm_memory_max_bytes{area="heap",id="G1 Eden Space"} -1',
     'jvm_memory_max_bytes{area="heap",id="G1 Old Gen"} 536870912',
     'jvm_gc_overhead 0.01',
+    // Micrometer's GC pause timer: a summary (count/sum) plus a decaying max, labelled by collector and action.
+    `jvm_gc_pause_seconds_count{action="end of minor GC",cause="G1 Evacuation Pause",gc="G1 Young Generation"} ${s.total / 10}`,
+    `jvm_gc_pause_seconds_sum{action="end of minor GC",cause="G1 Evacuation Pause",gc="G1 Young Generation"} ${s.total / 2000}`,
+    'jvm_gc_pause_seconds_max{action="end of minor GC",cause="G1 Evacuation Pause",gc="G1 Young Generation"} 0.011',
     `jvm_gc_memory_allocated_bytes_total ${s.total * 200000}`,
     'jvm_threads_live_threads 42',
     'jvm_threads_daemon_threads 30',
