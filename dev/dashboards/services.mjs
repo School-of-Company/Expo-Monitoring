@@ -3,7 +3,8 @@
 // (Attendance, Form, Gateway). Config Server exposes no metrics and is not in Eureka, so it has none.
 //
 // Metric names follow what the services actually expose: Spring Boot 4.1 Micrometer (jvm_gc_overhead,
-// jvm_gc_pause_seconds as a summary with a decaying max and no buckets, registered at the first GC;
+// jvm_gc_pause_seconds with a decaying max, registered at the first GC — buckets only where the service sets
+// management.metrics.distribution.slo.jvm.gc.pause;
 // lettuce_seconds{db_operation}) and Node prom-client 15 defaults.
 import {
   UP_DOWN,
@@ -61,6 +62,11 @@ function jvm(s) {
       unit: 's',
       min: 0,
       description: '최근 약 2분 동안 GC 한 번이 멈춘 가장 긴 시간(Micrometer의 감쇠 최댓값). 요청 지연이 튀는 시점과 겹치는지 봅니다. 서비스가 기동 후 GC를 한 번도 하지 않았으면 비어 있습니다.',
+    }),
+    timeseries('GC 정지 시간 p99 (수집기별)', [[`histogram_quantile(0.99, sum by (le, gc) (rate(jvm_gc_pause_seconds_bucket{${sel}}[5m])))`, '{{gc}}']], {
+      unit: 's',
+      min: 0,
+      description: 'GC 한 번이 멈춘 시간의 99번째 백분위(5분 창). 서비스가 management.metrics.distribution.slo.jvm.gc.pause(1ms~2s 버킷)를 설정해야 값이 나옵니다. 버킷 사이는 보간한 근사값입니다.',
     }),
     timeseries('GC 평균 정지 시간 (수집기별)', [[
       `sum by (gc) (rate(jvm_gc_pause_seconds_sum{${sel}}[5m])) / (sum by (gc) (rate(jvm_gc_pause_seconds_count{${sel}}[5m])) > 0)`,

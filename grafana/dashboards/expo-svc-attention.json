@@ -886,6 +886,62 @@
     },
     {
       "type": "timeseries",
+      "title": "GC 정지 시간 p99 (수집기별)",
+      "description": "GC 한 번이 멈춘 시간의 99번째 백분위(5분 창). 서비스가 management.metrics.distribution.slo.jvm.gc.pause(1ms~2s 버킷)를 설정해야 값이 나옵니다. 버킷 사이는 보간한 근사값입니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le, gc) (rate(jvm_gc_pause_seconds_bucket{service=\"expo-attention-server\"}[5m])))",
+          "legendFormat": "{{gc}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 15,
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 38
+      }
+    },
+    {
+      "type": "timeseries",
       "title": "GC 평균 정지 시간 (수집기별)",
       "description": "GC 한 번당 평균 정지 시간(5분 창). 분위수(p99)는 서비스가 히스토그램 버킷을 내야 볼 수 있습니다.",
       "datasource": {
@@ -932,11 +988,11 @@
           "sort": "desc"
         }
       },
-      "id": 15,
+      "id": 16,
       "gridPos": {
         "h": 9,
         "w": 12,
-        "x": 0,
+        "x": 12,
         "y": 38
       }
     },
@@ -988,12 +1044,12 @@
           "sort": "desc"
         }
       },
-      "id": 16,
+      "id": 17,
       "gridPos": {
         "h": 9,
         "w": 12,
-        "x": 12,
-        "y": 38
+        "x": 0,
+        "y": 47
       }
     },
     {
@@ -1042,11 +1098,11 @@
           "sort": "desc"
         }
       },
-      "id": 17,
+      "id": 18,
       "gridPos": {
         "h": 9,
         "w": 12,
-        "x": 0,
+        "x": 12,
         "y": 47
       }
     },
@@ -1097,12 +1153,12 @@
           "sort": "desc"
         }
       },
-      "id": 18,
+      "id": 19,
       "gridPos": {
         "h": 9,
         "w": 12,
-        "x": 12,
-        "y": 47
+        "x": 0,
+        "y": 56
       }
     },
     {
@@ -1169,11 +1225,11 @@
           "sort": "desc"
         }
       },
-      "id": 19,
+      "id": 20,
       "gridPos": {
         "h": 11,
         "w": 12,
-        "x": 0,
+        "x": 12,
         "y": 56
       }
     },
@@ -1251,12 +1307,12 @@
           "sort": "desc"
         }
       },
-      "id": 20,
+      "id": 21,
       "gridPos": {
         "h": 11,
         "w": 12,
-        "x": 12,
-        "y": 56
+        "x": 0,
+        "y": 67
       }
     }
   ]
