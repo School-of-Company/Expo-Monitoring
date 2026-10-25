@@ -406,7 +406,8 @@
     },
     {
       "type": "stat",
-      "title": "JVM 라이브 스레드 수",
+      "title": "GC 정지 최대 (2분)",
+      "description": "최근 약 2분 동안 GC 한 번이 멈춘 가장 긴 시간(모든 인스턴스·수집기 중 최댓값). 50ms를 넘으면 노랑, 200ms를 넘으면 빨강입니다(참고값).",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -418,14 +419,15 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(jvm_threads_live_threads{service=\"expo-user-server\"})",
+          "expr": "max(jvm_gc_pause_seconds_max{service=\"expo-user-server\"})",
           "legendFormat": "",
           "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "s",
+          "decimals": 1,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -433,6 +435,14 @@
               {
                 "color": "green",
                 "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.05
+              },
+              {
+                "color": "red",
+                "value": 0.2
               }
             ]
           },
@@ -811,8 +821,120 @@
     },
     {
       "type": "timeseries",
+      "title": "GC 정지 시간 최대 (수집기별)",
+      "description": "최근 약 2분 동안 GC 한 번이 멈춘 가장 긴 시간(Micrometer의 감쇠 최댓값). 요청 지연이 튀는 시점과 겹치는지 봅니다. 서비스가 기동 후 GC를 한 번도 하지 않았으면 비어 있습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (gc) (jvm_gc_pause_seconds_max{service=\"expo-user-server\"})",
+          "legendFormat": "{{gc}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 14,
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 27
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "GC 평균 정지 시간 (수집기별)",
+      "description": "GC 한 번당 평균 정지 시간(5분 창). 분위수(p99)는 서비스가 히스토그램 버킷을 내야 볼 수 있습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (gc) (rate(jvm_gc_pause_seconds_sum{service=\"expo-user-server\"}[5m])) / (sum by (gc) (rate(jvm_gc_pause_seconds_count{service=\"expo-user-server\"}[5m])) > 0)",
+          "legendFormat": "{{gc}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 15,
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 38
+      }
+    },
+    {
+      "type": "timeseries",
       "title": "GC 오버헤드 (%)",
-      "description": "최근 구간 CPU 시간 중 GC에 쓴 비율(jvm_gc_overhead). Spring Boot 4.1은 jvm_gc_pause_seconds 대신 이 값을 냅니다.",
+      "description": "최근 구간 CPU 시간 중 GC에 쓴 비율(jvm_gc_overhead).",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -857,12 +979,12 @@
           "sort": "desc"
         }
       },
-      "id": 14,
+      "id": 16,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 27
+        "y": 38
       }
     },
     {
@@ -911,12 +1033,12 @@
           "sort": "desc"
         }
       },
-      "id": 15,
+      "id": 17,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 38
+        "y": 47
       }
     },
     {
@@ -966,12 +1088,12 @@
           "sort": "desc"
         }
       },
-      "id": 16,
+      "id": 18,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 38
+        "y": 47
       }
     },
     {
@@ -1038,12 +1160,12 @@
           "sort": "desc"
         }
       },
-      "id": 17,
+      "id": 19,
       "gridPos": {
         "h": 11,
         "w": 12,
         "x": 0,
-        "y": 47
+        "y": 56
       }
     },
     {
@@ -1120,12 +1242,12 @@
           "sort": "desc"
         }
       },
-      "id": 18,
+      "id": 20,
       "gridPos": {
         "h": 11,
         "w": 12,
         "x": 12,
-        "y": 47
+        "y": 56
       }
     },
     {
@@ -1174,12 +1296,12 @@
           "sort": "desc"
         }
       },
-      "id": 19,
+      "id": 21,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 58
+        "y": 67
       }
     },
     {
@@ -1229,12 +1351,12 @@
           "sort": "desc"
         }
       },
-      "id": 20,
+      "id": 22,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 58
+        "y": 67
       }
     }
   ]

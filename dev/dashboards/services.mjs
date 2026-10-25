@@ -3,7 +3,8 @@
 // (Attendance, Form, Gateway). Config Server exposes no metrics and is not in Eureka, so it has none.
 //
 // Metric names follow what the services actually expose: Spring Boot 4.1 Micrometer (jvm_gc_overhead,
-// no jvm_gc_pause_seconds; lettuce_seconds{db_operation}) and Node prom-client 15 defaults.
+// jvm_gc_pause_seconds as a summary with a decaying max and no buckets, registered at the first GC;
+// lettuce_seconds{db_operation}) and Node prom-client 15 defaults.
 import {
   UP_DOWN,
   UP_THRESHOLDS,
@@ -56,10 +57,19 @@ function jvm(s) {
       [`sum by (instance) (jvm_memory_committed_bytes{area="heap",${sel}})`, '확보 {{instance}}'],
       [`sum by (instance) (jvm_memory_max_bytes{area="heap",${sel}} > 0)`, '한도 {{instance}}'],
     ], { unit: 'bytes', description: '한도는 한도가 있는 영역(G1 Old Gen 등)의 합입니다. G1의 young 영역은 -1(한도 없음)로 보고되어 뺍니다.' }),
+    timeseries('GC 정지 시간 최대 (수집기별)', [[`max by (gc) (jvm_gc_pause_seconds_max{${sel}})`, '{{gc}}']], {
+      unit: 's',
+      min: 0,
+      description: '최근 약 2분 동안 GC 한 번이 멈춘 가장 긴 시간(Micrometer의 감쇠 최댓값). 요청 지연이 튀는 시점과 겹치는지 봅니다. 서비스가 기동 후 GC를 한 번도 하지 않았으면 비어 있습니다.',
+    }),
+    timeseries('GC 평균 정지 시간 (수집기별)', [[
+      `sum by (gc) (rate(jvm_gc_pause_seconds_sum{${sel}}[5m])) / (sum by (gc) (rate(jvm_gc_pause_seconds_count{${sel}}[5m])) > 0)`,
+      '{{gc}}',
+    ]], { unit: 's', min: 0, description: 'GC 한 번당 평균 정지 시간(5분 창). 분위수(p99)는 서비스가 히스토그램 버킷을 내야 볼 수 있습니다.' }),
     timeseries('GC 오버헤드 (%)', [[`max by (instance) (jvm_gc_overhead{${sel}})`, '{{instance}}']], {
       unit: 'percentunit',
       min: 0,
-      description: '최근 구간 CPU 시간 중 GC에 쓴 비율(jvm_gc_overhead). Spring Boot 4.1은 jvm_gc_pause_seconds 대신 이 값을 냅니다.',
+      description: '최근 구간 CPU 시간 중 GC에 쓴 비율(jvm_gc_overhead).',
     }),
     timeseries('초당 힙 할당량', [[`sum by (instance) (rate(jvm_gc_memory_allocated_bytes_total{${sel}}[1m]))`, '{{instance}}']], { unit: 'Bps' }),
     timeseries('프로세스 CPU 사용률', [[`max by (instance) (process_cpu_usage{${sel}})`, '{{instance}}']], { unit: 'percentunit', min: 0 }),
@@ -173,7 +183,13 @@ function top(s) {
         thresholds: CPU_THRESHOLDS,
         description: '가장 바쁜 인스턴스의 CPU 사용률. 70%를 넘으면 노랑, 90%를 넘으면 빨강입니다(참고값).',
       }),
-      stat('JVM 라이브 스레드 수', [[`sum(jvm_threads_live_threads{${sel}})`, '']], { w, colorMode: 'value' }),
+      stat('GC 정지 최대 (2분)', [[`max(jvm_gc_pause_seconds_max{${sel}})`, '']], {
+        w,
+        unit: 's',
+        decimals: 1,
+        thresholds: LATENCY_THRESHOLDS,
+        description: '최근 약 2분 동안 GC 한 번이 멈춘 가장 긴 시간(모든 인스턴스·수집기 중 최댓값). 50ms를 넘으면 노랑, 200ms를 넘으면 빨강입니다(참고값).',
+      }),
     ];
   }
   return [
