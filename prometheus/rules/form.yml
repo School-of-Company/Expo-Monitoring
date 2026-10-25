@@ -115,6 +115,31 @@ groups:
           dashboard_uid: expo-form
           runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formdownstreamfailures
 
+      # A circuit-open or bulkhead-rejected call never reaches the service, so it is not counted by
+      # FormDownstreamFailures (failure|timeout). Without these, FormDownstreamFailures goes quiet
+      # exactly when the guard starts protecting.
+      - alert: FormDownstreamCircuitOpen
+        expr: sum by (service, exported_service) (form:downstream_calls:rate5m{outcome="circuit_open"}) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.exported_service }}: form is failing fast (circuit open) for 1 minute"
+          description: The circuit breaker for the expo/user service is open, so form answers 503 without calling it.
+          dashboard_uid: expo-form
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formdownstreamcircuitopen
+
+      - alert: FormDownstreamBulkheadFull
+        expr: sum by (service, exported_service) (form:downstream_calls:rate5m{outcome="bulkhead_full"}) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.exported_service }}: concurrent-call limit rejects calls above 0.05/s for 2 minutes"
+          description: Form rejected calls to the expo/user service because its concurrency limit and queue were full.
+          dashboard_uid: expo-form
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formdownstreambulkheadfull
+
       - alert: FormDownstreamHighLatency
         expr: |
           form:downstream_latency_p95:5m > 2

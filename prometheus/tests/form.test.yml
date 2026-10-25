@@ -166,6 +166,12 @@ tests:
         values: '0+3x100'
       - series: 'form_downstream_calls_seconds_count{service="expo-form-server",exported_service="user",operation="survey_answer_result",outcome="success"}'
         values: '0+15x100'
+      - series: 'form_downstream_calls_seconds_count{service="expo-form-server",exported_service="user",operation="survey_answer_result",outcome="circuit_open"}'
+        values: '0+15x100'
+      - series: 'form_downstream_calls_seconds_count{service="expo-form-server",exported_service="expo",operation="reserve_update",outcome="bulkhead_full"}'
+        values: '0+15x100'
+      - series: 'form_downstream_calls_seconds_count{service="expo-form-server",exported_service="expo",operation="exists",outcome="circuit_open"}'
+        values: '0+0x100'
       - series: 'form_downstream_calls_seconds_count{service="expo-form-server",exported_service="expo",operation="exists",outcome="not_found"}'
         values: '0+15x100'
       - series: 'form_downstream_calls_seconds_count{service="expo-form-server",exported_service="expo",operation="exists",outcome="conflict"}'
@@ -190,6 +196,24 @@ tests:
               description: Calls from form to the expo/user service end as failure or timeout (not_found and conflict are not failures).
               dashboard_uid: expo-form
               runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formdownstreamfailures
+      - eval_time: 10m
+        alertname: FormDownstreamCircuitOpen
+        exp_alerts:
+          - exp_labels: {severity: warning, service: expo-form-server, exported_service: user}
+            exp_annotations:
+              summary: "user: form is failing fast (circuit open) for 1 minute"
+              description: The circuit breaker for the expo/user service is open, so form answers 503 without calling it.
+              dashboard_uid: expo-form
+              runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formdownstreamcircuitopen
+      - eval_time: 10m
+        alertname: FormDownstreamBulkheadFull
+        exp_alerts:
+          - exp_labels: {severity: warning, service: expo-form-server, exported_service: expo}
+            exp_annotations:
+              summary: "expo: concurrent-call limit rejects calls above 0.05/s for 2 minutes"
+              description: Form rejected calls to the expo/user service because its concurrency limit and queue were full.
+              dashboard_uid: expo-form
+              runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formdownstreambulkheadfull
       - eval_time: 10m
         alertname: FormDownstreamHighLatency
         exp_alerts:

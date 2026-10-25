@@ -87,9 +87,9 @@ await eventually('common RED records and zero-error gateway', async () => {
   assert((await query('gateway_http_requests_total{service="expo-gateway"}')).length > 0);
 });
 
-await eventually('all eighteen recording and nineteen alert rules loaded, Alertmanager connected', async () => {
+await eventually('all eighteen recording and twenty-one alert rules loaded, Alertmanager connected', async () => {
   const rules = (await json(`${prometheus}/api/v1/rules`)).data.groups.flatMap((group) => group.rules);
-  assert.equal(rules.length, 37);
+  assert.equal(rules.length, 39);
   assert(rules.every((rule) => rule.health === 'ok'));
   const alertmanagers = (await json(`${prometheus}/api/v1/alertmanagers`)).data.activeAlertmanagers;
   assert(alertmanagers.some((am) => am.url.startsWith('http://alertmanager:9093/')));
@@ -101,7 +101,7 @@ await eventually('Form downstream label collision becomes exported_service and f
   assert.deepEqual([...new Set(samples.map((sample) => sample.metric.exported_service))].sort(), ['expo', 'user']);
   assert.deepEqual([...new Set(samples.map((sample) => sample.metric.outcome))].sort(), ['conflict', 'failure', 'not_found', 'success', 'timeout']);
   const rules = (await json(`${prometheus}/api/v1/rules`)).data.groups.find((group) => group.name === 'form').rules;
-  assert.equal(rules.filter((rule) => rule.type === 'alerting').length, 8);
+  assert.equal(rules.filter((rule) => rule.type === 'alerting').length, 10);
   assert(rules.filter((rule) => rule.type === 'alerting').every((rule) => rule.state === 'inactive'));
 });
 
@@ -218,6 +218,9 @@ await eventually('Loki has demo logs with masked values', async () => {
   assert(!/01\d-?\d{3,4}-?\d{4}/.test(lines), 'phone number leaked');
   assert(!/[A-Za-z0-9_-]{40,}/.test(lines) && !/Bearer abc/.test(lines), 'token leaked');
   assert(/trace=[0-9a-f]{32}/.test(lines), 'trace id should stay readable');
+  // The PM2 "<time>: " prefix of expo-form-server-out.log is stripped: every stored line is the JSON itself.
+  const stored = streams.flatMap((stream) => stream.values.map((value) => value[1]));
+  assert(stored.every((line) => line.startsWith('{"@timestamp"')), `pm2 prefix left: ${stored.find((line) => !line.startsWith('{'))}`);
 });
 
 await eventually('Tempo returns a span sent over OTLP HTTP', async () => {
