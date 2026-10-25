@@ -81,9 +81,9 @@ await eventually('common RED records and zero-error gateway', async () => {
   assert((await query('gateway_http_requests_total{service="expo-gateway"}')).length > 0);
 });
 
-await eventually('all fourteen recording and nineteen alert rules loaded, Alertmanager connected', async () => {
+await eventually('all fourteen recording and twenty-one alert rules loaded, Alertmanager connected', async () => {
   const rules = (await json(`${prometheus}/api/v1/rules`)).data.groups.flatMap((group) => group.rules);
-  assert.equal(rules.length, 33);
+  assert.equal(rules.length, 35);
   assert(rules.every((rule) => rule.health === 'ok'));
   const alertmanagers = (await json(`${prometheus}/api/v1/alertmanagers`)).data.activeAlertmanagers;
   assert(alertmanagers.some((am) => am.url.startsWith('http://alertmanager:9093/')));
