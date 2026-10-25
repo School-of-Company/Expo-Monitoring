@@ -56,7 +56,7 @@ function target(ds, expr, legendFormat, extra = {}, refId = 'A') {
 }
 
 /** queries: [[expr, legend], ...] */
-export function timeseries(title, queries, { unit = 'short', w = 12, h = 8, description, min, max, ds = PROMETHEUS, stacking, levelColors = false } = {}) {
+export function timeseries(title, queries, { unit = 'short', w = 12, h = Math.min(8 + queries.length, 11), description, min, max, ds = PROMETHEUS, stacking, levelColors = false } = {}) {
   return {
     type: 'timeseries',
     title,
@@ -80,7 +80,7 @@ export function timeseries(title, queries, { unit = 'short', w = 12, h = 8, desc
       overrides: levelColors ? levelOverrides() : [],
     },
     options: {
-      legend: { displayMode: 'table', placement: 'bottom', calcs: ['lastNotNull', 'max'] },
+      legend: { displayMode: 'table', placement: 'bottom', calcs: ['lastNotNull', 'max'], sortBy: 'Last *', sortDesc: true },
       tooltip: { mode: 'multi', sort: 'desc' },
     },
   };

@@ -232,7 +232,9 @@
           "calcs": [
             "lastNotNull",
             "max"
-          ]
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi",
@@ -241,7 +243,7 @@
       },
       "id": 2,
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
         "x": 0,
         "y": 5
@@ -287,7 +289,9 @@
           "calcs": [
             "lastNotNull",
             "max"
-          ]
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi",
@@ -296,7 +300,7 @@
       },
       "id": 3,
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
         "x": 12,
         "y": 5
@@ -340,7 +344,9 @@
           "calcs": [
             "lastNotNull",
             "max"
-          ]
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi",
@@ -349,10 +355,10 @@
       },
       "id": 4,
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
         "x": 0,
-        "y": 13
+        "y": 14
       }
     },
     {
@@ -414,7 +420,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 13
+        "y": 14
       }
     },
     {
@@ -427,7 +433,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 23
       }
     },
     {
@@ -468,7 +474,9 @@
           "calcs": [
             "lastNotNull",
             "max"
-          ]
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi",
@@ -477,10 +485,10 @@
       },
       "id": 7,
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
         "x": 0,
-        "y": 22
+        "y": 24
       }
     },
     {
@@ -521,7 +529,9 @@
           "calcs": [
             "lastNotNull",
             "max"
-          ]
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi",
@@ -530,10 +540,10 @@
       },
       "id": 8,
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
         "x": 12,
-        "y": 22
+        "y": 24
       }
     },
     {
@@ -546,7 +556,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 30
+        "y": 33
       }
     },
     {
@@ -637,7 +647,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 31
+        "y": 34
       }
     },
     {
@@ -707,7 +717,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 31
+        "y": 34
       }
     },
     {
@@ -749,7 +759,9 @@
           "calcs": [
             "lastNotNull",
             "max"
-          ]
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi",
@@ -758,10 +770,10 @@
       },
       "id": 12,
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
         "x": 12,
-        "y": 31
+        "y": 34
       }
     },
     {
@@ -803,7 +815,9 @@
           "calcs": [
             "lastNotNull",
             "max"
-          ]
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi",
@@ -812,10 +826,10 @@
       },
       "id": 13,
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
         "x": 0,
-        "y": 39
+        "y": 43
       }
     },
     {
@@ -857,7 +871,9 @@
           "calcs": [
             "lastNotNull",
             "max"
-          ]
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi",
@@ -866,10 +882,10 @@
       },
       "id": 14,
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
         "x": 12,
-        "y": 39
+        "y": 43
       }
     },
     {
@@ -911,7 +927,9 @@
           "calcs": [
             "lastNotNull",
             "max"
-          ]
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi",
@@ -920,10 +938,10 @@
       },
       "id": 15,
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
         "x": 0,
-        "y": 47
+        "y": 52
       }
     },
     {
@@ -990,7 +1008,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 47
+        "y": 52
       }
     },
     {
@@ -1030,7 +1048,9 @@
           "calcs": [
             "lastNotNull",
             "max"
-          ]
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi",
@@ -1039,10 +1059,10 @@
       },
       "id": 17,
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
         "x": 0,
-        "y": 55
+        "y": 61
       }
     },
     {
@@ -1083,7 +1103,9 @@
           "calcs": [
             "lastNotNull",
             "max"
-          ]
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi",
@@ -1092,10 +1114,10 @@
       },
       "id": 18,
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
         "x": 12,
-        "y": 55
+        "y": 61
       }
     }
   ]

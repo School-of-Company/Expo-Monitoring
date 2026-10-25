@@ -89,17 +89,37 @@ function jvm(s) {
 
 function node(s) {
   const sel = `service="${s.name}"`;
+  const gcBucket = `nodejs_gc_duration_seconds_bucket{${sel}}`;
   return [
     row('런타임 (Node.js)'),
-    timeseries('이벤트 루프 지연', [
-      [`max by (instance) (nodejs_eventloop_lag_p50_seconds{${sel}})`, 'p50 {{instance}}'],
-      [`max by (instance) (nodejs_eventloop_lag_p99_seconds{${sel}})`, 'p99 {{instance}}'],
-    ], { unit: 's', description: '이벤트 루프가 밀린 시간. 늘면 동기 작업이 요청 처리를 막고 있습니다.' }),
+    timeseries('이벤트 루프 지연 (가장 느린 인스턴스)', [
+      [`max(nodejs_eventloop_lag_p50_seconds{${sel}})`, 'p50'],
+      [`max(nodejs_eventloop_lag_p90_seconds{${sel}})`, 'p90'],
+      [`max(nodejs_eventloop_lag_p99_seconds{${sel}})`, 'p99'],
+      [`max(nodejs_eventloop_lag_max_seconds{${sel}})`, '최대'],
+    ], {
+      unit: 's',
+      min: 0,
+      description: '이벤트 루프가 밀린 시간. p99가 50ms를 넘으면 동기 작업이나 GC가 요청 처리를 막고 있다는 신호입니다. 인스턴스 중 가장 큰 값을 보여 줍니다.',
+    }),
+    timeseries('GC 정지 시간 p99 (종류별)', [[`histogram_quantile(0.99, sum by (le, kind) (rate(${gcBucket}[5m])))`, '{{kind}}']], {
+      unit: 's',
+      min: 0,
+      description: 'GC 한 번이 멈춘 시간의 99번째 백분위(5분 창). prom-client의 버킷(1ms, 10ms, 100ms, 1s, 2s, 5s) 사이는 보간한 근사값입니다. major가 길면 요청 지연으로 이어집니다.',
+    }),
+    timeseries('GC 평균 정지 시간 (종류별)', [[
+      `sum by (kind) (rate(nodejs_gc_duration_seconds_sum{${sel}}[5m])) / (sum by (kind) (rate(nodejs_gc_duration_seconds_count{${sel}}[5m])) > 0)`,
+      '{{kind}}',
+    ]], { unit: 's', min: 0, description: 'GC 한 번당 평균 정지 시간(5분 창).' }),
+    timeseries('GC에 쓴 시간 비율 (%)', [[`sum by (kind) (rate(nodejs_gc_duration_seconds_sum{${sel}}[1m]))`, '{{kind}}']], {
+      unit: 'percentunit',
+      min: 0,
+      description: '프로세스 시간 중 GC로 멈춰 있던 비율. 높으면 메모리 압박이 큽니다.',
+    }),
     timeseries('힙 메모리', [
       [`sum by (instance) (nodejs_heap_size_used_bytes{${sel}})`, '사용 {{instance}}'],
       [`sum by (instance) (nodejs_heap_size_total_bytes{${sel}})`, '확보 {{instance}}'],
     ], { unit: 'bytes' }),
-    timeseries('GC 일시정지 시간 (초당)', [[`sum by (kind) (rate(nodejs_gc_duration_seconds_sum{${sel}}[1m]))`, '{{kind}}']], { unit: 's' }),
     timeseries('프로세스 상주 메모리 (RSS)', [[`max by (instance) (process_resident_memory_bytes{${sel}})`, '{{instance}}']], { unit: 'bytes' }),
     timeseries('프로세스 CPU 사용률', [[`sum by (instance) (rate(process_cpu_seconds_total{${sel}}[1m]))`, '{{instance}}']], { unit: 'percentunit', min: 0 }),
     timeseries('활성 핸들·요청', [
@@ -109,17 +129,25 @@ function node(s) {
   ];
 }
 
+const LATENCY_THRESHOLDS = { mode: 'absolute', steps: [{ color: 'green', value: null }, { color: 'yellow', value: 0.05 }, { color: 'red', value: 0.2 }] };
+const GC_OVERHEAD_THRESHOLDS = { mode: 'absolute', steps: [{ color: 'green', value: null }, { color: 'yellow', value: 0.05 }, { color: 'red', value: 0.1 }] };
+const CPU_THRESHOLDS = { mode: 'absolute', steps: [{ color: 'green', value: null }, { color: 'yellow', value: 0.7 }, { color: 'red', value: 0.9 }] };
+
+/** Six tiles in one row: scrape state first, then the signals that show a struggling runtime. */
 function top(s) {
   const sel = `service="${s.name}"`;
   const up = `up{job="eureka-services",${sel}}`;
+  const w = 4;
   const common = [
     stat('메트릭 수집 상태', [[`max(${up})`, '']], {
+      w,
       description: 'Prometheus가 이 서비스를 긁고 있는지. 인스턴스 중 하나라도 UP이면 UP입니다.',
       mappings: UP_DOWN,
       thresholds: UP_THRESHOLDS,
       colorMode: 'background',
     }),
     stat('UP 인스턴스 수', [[`count(${up} == 1) or vector(0)`, '']], {
+      w,
       description: 'Eureka에 등록되어 수집이 되는 인스턴스 수.',
       thresholds: UP_THRESHOLDS,
     }),
@@ -127,18 +155,48 @@ function top(s) {
   if (s.runtime === 'jvm') {
     return [
       ...common,
+      stat('GC 오버헤드', [[`max(jvm_gc_overhead{${sel}})`, '']], {
+        w,
+        unit: 'percentunit',
+        decimals: 1,
+        thresholds: GC_OVERHEAD_THRESHOLDS,
+        description: '최근 구간 CPU 시간 중 GC에 쓴 비율(가장 높은 인스턴스). 5%를 넘으면 노랑, 10%를 넘으면 빨강입니다(참고값).',
+      }),
       gauge('힙 한도 대비 사용률', `sum(jvm_memory_used_bytes{area="heap",${sel}}) / sum(jvm_memory_max_bytes{area="heap",${sel}} > 0)`, {
+        w,
         description: '모든 인스턴스의 힙 사용량 ÷ 힙 한도. 85%를 넘으면 빨간색입니다(참고값).',
       }),
-      stat('JVM 라이브 스레드 수', [[`sum(jvm_threads_live_threads{${sel}})`, '']], { colorMode: 'value' }),
+      stat('프로세스 CPU 사용률', [[`max(process_cpu_usage{${sel}})`, '']], {
+        w,
+        unit: 'percentunit',
+        decimals: 0,
+        thresholds: CPU_THRESHOLDS,
+        description: '가장 바쁜 인스턴스의 CPU 사용률. 70%를 넘으면 노랑, 90%를 넘으면 빨강입니다(참고값).',
+      }),
+      stat('JVM 라이브 스레드 수', [[`sum(jvm_threads_live_threads{${sel}})`, '']], { w, colorMode: 'value' }),
     ];
   }
   return [
     ...common,
+    stat('이벤트 루프 지연 p99', [[`max(nodejs_eventloop_lag_p99_seconds{${sel}})`, '']], {
+      w,
+      unit: 's',
+      decimals: 1,
+      thresholds: LATENCY_THRESHOLDS,
+      description: '가장 느린 인스턴스의 이벤트 루프 지연 p99. 50ms를 넘으면 노랑, 200ms를 넘으면 빨강입니다(참고값).',
+    }),
+    stat('GC 정지 p99 (5분)', [[`histogram_quantile(0.99, sum by (le) (rate(nodejs_gc_duration_seconds_bucket{${sel}}[5m])))`, '']], {
+      w,
+      unit: 's',
+      decimals: 1,
+      thresholds: LATENCY_THRESHOLDS,
+      description: 'GC 한 번이 멈춘 시간의 p99(모든 종류 합산, 버킷 보간 근사값). 50ms를 넘으면 노랑, 200ms를 넘으면 빨강입니다(참고값).',
+    }),
     gauge('힙 확보량 대비 사용률', `sum(nodejs_heap_size_used_bytes{${sel}}) / sum(nodejs_heap_size_total_bytes{${sel}})`, {
+      w,
       description: 'V8이 확보한 힙 중 사용 중인 비율. V8은 필요하면 힙을 늘리므로 높다고 바로 위험하지는 않습니다.',
     }),
-    stat('Node.js 활성 핸들 수', [[`sum(nodejs_active_handles_total{${sel}})`, '']], { colorMode: 'value' }),
+    stat('Node.js 활성 핸들 수', [[`sum(nodejs_active_handles_total{${sel}})`, '']], { w, colorMode: 'value' }),
   ];
 }
 
