@@ -50,11 +50,13 @@ export function row(title) {
 }
 
 function target(ds, expr, legendFormat, extra = {}, refId = 'A') {
-  return { refId, datasource: ds, expr, legendFormat, ...extra };
+  // Loki tells instant and range queries apart by queryType; Prometheus by `instant`.
+  const loki = ds.type === 'loki' ? { queryType: extra.instant ? 'instant' : 'range' } : {};
+  return { refId, datasource: ds, expr, legendFormat, ...loki, ...extra };
 }
 
 /** queries: [[expr, legend], ...] */
-export function timeseries(title, queries, { unit = 'short', w = 12, h = 8, description, min, max, ds = PROMETHEUS } = {}) {
+export function timeseries(title, queries, { unit = 'short', w = 12, h = 8, description, min, max, ds = PROMETHEUS, stacking, levelColors = false } = {}) {
   return {
     type: 'timeseries',
     title,
@@ -67,9 +69,15 @@ export function timeseries(title, queries, { unit = 'short', w = 12, h = 8, desc
         unit,
         ...(min === undefined ? {} : { min }),
         ...(max === undefined ? {} : { max }),
-        custom: { lineWidth: 1, fillOpacity: 10, showPoints: 'never', spanNulls: false },
+        custom: {
+          lineWidth: 1,
+          fillOpacity: stacking ? 60 : 10,
+          showPoints: 'never',
+          spanNulls: false,
+          ...(stacking ? { stacking: { mode: stacking, group: 'A' } } : {}),
+        },
       },
-      overrides: [],
+      overrides: levelColors ? levelOverrides() : [],
     },
     options: {
       legend: { displayMode: 'table', placement: 'bottom', calcs: ['lastNotNull', 'max'] },
@@ -108,6 +116,83 @@ export function stat(title, queries, { unit = 'short', w = 6, h = 5, description
   };
 }
 
+/** Multi-select variable from a Loki label (All = any value). */
+export function lokiLabelVariable(name, label, stream) {
+  return {
+    name,
+    label,
+    type: 'query',
+    datasource: LOKI,
+    definition: `label_values(${stream}, ${name})`,
+    query: { qryType: 1, label: name, stream, refId: `LokiVariableQueryEditor-${name}` },
+    refresh: 2,
+    includeAll: true,
+    multi: true,
+    allValue: '.+',
+    current: { selected: true, text: ['All'], value: ['$__all'] },
+    sort: 1,
+  };
+}
+
+export function textboxVariable(name, label) {
+  return { name, label, type: 'textbox', query: '', current: { text: '', value: '' }, hide: 0 };
+}
+
+/** Level colors used by every log panel: same meaning everywhere. */
+export const LEVEL_COLORS = { ERROR: 'red', WARN: 'yellow', INFO: 'green', DEBUG: 'blue', TRACE: 'purple' };
+
+function levelOverrides() {
+  return Object.entries(LEVEL_COLORS).map(([level, color]) => ({
+    matcher: { id: 'byName', options: level },
+    properties: [{ id: 'color', value: { mode: 'fixed', fixedColor: color } }],
+  }));
+}
+
+/**
+ * Share of each series over the selected range. The queries are range queries of non-overlapping
+ * windows (e.g. count_over_time(...[$__interval])) summed per series: a Loki instant query comes back
+ * as one merged field and would draw a single slice.
+ */
+export function piechart(title, queries, { w = 8, h = 8, description, ds = PROMETHEUS, levelColors = false } = {}) {
+  return {
+    type: 'piechart',
+    title,
+    ...(description ? { description } : {}),
+    datasource: ds,
+    size: { w, h },
+    targets: queries.map(([expr, legend], i) => target(ds, expr, legend, {}, String.fromCharCode(65 + i))),
+    fieldConfig: { defaults: { unit: 'short' }, overrides: levelColors ? levelOverrides() : [] },
+    options: {
+      reduceOptions: { calcs: ['sum'], fields: '', values: false },
+      pieType: 'donut',
+      legend: { displayMode: 'table', placement: 'right', values: ['value', 'percent'] },
+      tooltip: { mode: 'single' },
+    },
+  };
+}
+
+/** Log lines, newest first, with details (all JSON keys) on click. */
+export function logs(title, expr, { w = 24, h = 16, description, ds = LOKI } = {}) {
+  return {
+    type: 'logs',
+    title,
+    ...(description ? { description } : {}),
+    datasource: ds,
+    size: { w, h },
+    targets: [target(ds, expr, '', { queryType: 'range' })],
+    options: {
+      showTime: true,
+      showLabels: false,
+      showCommonLabels: false,
+      wrapLogMessage: true,
+      prettifyLogMessage: false,
+      enableLogDetails: true,
+      sortOrder: 'Descending',
+      dedupStrategy: 'none',
+    },
+  };
+}
+
 /** A single ratio (0..1) as a dial, e.g. heap used against its limit. */
 export function gauge(title, expr, { w = 6, h = 5, description, thresholds, ds = PROMETHEUS } = {}) {
   return {
@@ -141,6 +226,8 @@ export function gauge(title, expr, { w = 6, h = 5, description, thresholds, ds =
 
 /** Instant query shown as a table, keeping only the listed labels (renamed to Korean headers). */
 export function table(title, expr, columns, { w = 12, h = 8, description, ds = PROMETHEUS, unit } = {}) {
+  // The value column is "Value" for Prometheus and "Value #A" for Loki instant tables.
+  if ('Value' in columns) columns = { ...columns, 'Value #A': columns.Value };
   const keep = Object.keys(columns);
   return {
     type: 'table',
@@ -192,7 +279,7 @@ export const RATIO_THRESHOLDS = {
   ],
 };
 
-/** links: [{ title, uid }] to other dashboards, keeping the time range and variables. */
+/** links: [{ title, uid, query? }] to other dashboards, keeping the time range; query presets their variables. */
 export function dashboard({ uid, title, description, panels, variables, tags = ['expo'], links = [] }) {
   return {
     uid,
@@ -202,7 +289,7 @@ export function dashboard({ uid, title, description, panels, variables, tags = [
     links: links.map((link) => ({
       title: link.title,
       type: 'link',
-      url: `/d/${link.uid}`,
+      url: `/d/${link.uid}${link.query ? `?${link.query}` : ''}`,
       keepTime: true,
       includeVars: false,
       targetBlank: false,

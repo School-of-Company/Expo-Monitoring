@@ -58,6 +58,7 @@ Spring(Micrometer)과 NestJS 모두 `http_server_requests_seconds{method,status,
 ## 대시보드
 
 - **Expo / Overview** (`expo-overview`): 전 서비스 수집 상태 타일, 요청·5xx·평균 응답 시간, 활성 알림, JVM·Node 힙, Redis 캐시 히트율과 Postgres 버퍼·인덱스 히트율([캐시·DB 히트율](docs/datastore-monitoring.md)). `dev/dashboards/`에서 생성하므로 JSON을 직접 고치지 말고 `node dev/dashboards/build.mjs`를 실행합니다(CI가 `--check`로 검사).
+- **Expo / Logs** (`expo-logs`): 로그 전용(Loki). 서비스·레벨·검색어 변수, 로그량·서비스별 ERROR·레벨 분포·비중 추이·ERROR 모듈 상위·표준 위반 줄, 걸러진 로그 스트림([로그 표준](docs/logging.md#로그-대시보드)).
 - **MSA Service Overview**: `$service` 변수로 전환하는 RED + 인스턴스 + 런타임(JVM/Node). digest가 패널 이미지를 쓰므로 그대로 둡니다.
 - **Expo / <서비스>** (`expo-svc-<이름>`, 8개): 서비스별 수집 상태·UP 인스턴스·힙 게이지·스레드(JVM)/핸들(Node) 요약, 상태 코드별 요청·5xx·p50/p95/p99·상위 경로, 런타임(JVM: 힙·GC 오버헤드·할당·CPU·스레드·Hikari 풀, Redis를 쓰면 Lettuce 명령 수·지연 / Node: 이벤트 루프 지연·힙·GC·RSS·CPU·핸들). 상단 링크로 Overview와 도메인 대시보드(Attendance·Form·Gateway)로 갑니다. 지표 이름은 실제 서비스가 내는 것(Spring Boot 4.1 Micrometer: `jvm_gc_overhead`, `lettuce_seconds`; prom-client 15 기본값)에 맞췄습니다. Config Server는 메트릭을 내지 않고 Eureka에 없어 대시보드가 없습니다. 서비스 목록은 `dev/dashboards/services.mjs`입니다.
 - **Expo Gateway**: Gateway 전용 (Expo-Gateway 원본에서 가져왔으며, 공유 스택의 런타임 쿼리에는 `service="expo-gateway"` 필터를 추가했습니다. 원본 갱신 시 이 필터를 유지하세요)

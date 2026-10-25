@@ -15,6 +15,15 @@
       "includeVars": false,
       "targetBlank": false,
       "icon": "dashboard"
+    },
+    {
+      "title": "리포트 로그",
+      "type": "link",
+      "url": "/d/expo-logs?var-service=expo-report-server",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false,
+      "icon": "dashboard"
     }
   ],
   "schemaVersion": 39,
@@ -542,17 +551,20 @@
             "includeByName": {
               "method": true,
               "uri": true,
-              "Value": true
+              "Value": true,
+              "Value #A": true
             },
             "indexByName": {
               "method": 0,
               "uri": 1,
-              "Value": 2
+              "Value": 2,
+              "Value #A": 3
             },
             "renameByName": {
               "method": "메서드",
               "uri": "경로",
-              "Value": "초당 요청"
+              "Value": "초당 요청",
+              "Value #A": "초당 요청"
             }
           }
         }

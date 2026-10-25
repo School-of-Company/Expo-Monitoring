@@ -53,4 +53,10 @@ PM2 `-error.log`에는 크래시 스택 등 JSON이 아닌 stderr가 남을 수 
 
 ## 로그 대시보드
 
-로그 전용 Grafana 대시보드(전체 로그량, 서비스별 ERROR, 레벨 분포, 실시간 로그 + `service`/`level` 변수)는 모든 서비스가 이 표준을 따른 뒤 `grafana/dashboards/logs.json`으로 추가합니다.
+**Expo / Logs**(`expo-logs`, `dev/dashboards/logs.mjs`에서 생성)는 Loki만 쓰는 로그 전용 대시보드입니다. 메트릭 대시보드와 섞지 않습니다.
+
+- 변수: 데이터 소스, `service`·`level`(Loki 라벨 값, 다중 선택, 기본 All), 검색어(`|= "..."`).
+- 전체 현황: 전체 로그량 추이, 표준을 따르지 않은 줄 수(`{job="expo", service=""}`), 서비스별 초당 ERROR, 레벨 분포(선택 기간), 레벨 비중 추이(%), ERROR가 많은 모듈 상위 10(`module`은 structured metadata).
+- 실시간 로그: 선택한 서비스·레벨·검색어의 로그(최신순). 줄을 누르면 `module`·`requestId`·`traceId`·`stack_trace` 등 모든 키를 봅니다. 대시보드 새로고침 주기로 갱신되며, 끊김 없는 스트리밍은 Explore의 Live를 씁니다.
+- 서비스별 대시보드 상단의 "<서비스> 로그" 링크는 그 서비스로 걸러 엽니다(`?var-service=...`).
+- 레벨 색은 모든 로그 패널에서 같습니다: ERROR 빨강, WARN 노랑, INFO 초록, DEBUG 파랑, TRACE 보라.

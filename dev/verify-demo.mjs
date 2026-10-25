@@ -149,11 +149,12 @@ await eventually('Grafana provisioned dashboards and datasource', async () => {
   const health = await json(`${grafana}/api/health`);
   assert.equal(health.database, 'ok');
   const dashboards = await json(`${grafana}/api/search?type=dash-db`, { Authorization: authorization });
-  assert.equal(dashboards.length, 13);
+  assert.equal(dashboards.length, 14);
   for (const dashboard of dashboards) {
     const model = (await json(`${grafana}/api/dashboards/uid/${dashboard.uid}`, { Authorization: authorization })).dashboard;
     for (const target of model.panels.flatMap((panel) => panel.targets ?? [])) {
-      if (!target.expr) continue;
+      // LogQL panels (Expo / Logs) are checked against Loki below.
+      if (!target.expr || target.datasource?.type === 'loki') continue;
       const expression = target.expr.replaceAll('$service', '.*').replaceAll('$app', '.*');
       const response = await json(`${grafana}/api/datasources/proxy/uid/prometheus/api/v1/query?query=${encodeURIComponent(expression)}`, { Authorization: authorization });
       assert.equal(response.status, 'success');
@@ -206,6 +207,32 @@ await eventually('Loki indexes only job/service/level, read from the standard JS
   assert(legacy.data.result.every((s) => !s.stream.level && s.stream.filename?.endsWith('legacy-out.log')), 'non-standard labels');
   const count = await loki(`/loki/api/v1/query?query=${encodeURIComponent('sum by (service) (count_over_time({service=~".+"}[5m]))')}`);
   assert(count.data.result.length >= 2, 'count_over_time per service');
+});
+
+await eventually('Expo / Logs: every LogQL panel returns demo data with the variables set', async () => {
+  const model = (await json(`${grafana}/api/dashboards/uid/expo-logs`, { Authorization: authorization })).dashboard;
+  assert.deepEqual(model.templating.list.map((variable) => variable.name), ['datasource', 'service', 'level', 'search']);
+  const targets = model.panels.flatMap((panel) => (panel.targets ?? []).map((target) => ({ panel, target })));
+  assert(targets.length >= 7, 'logs panels');
+  const now = Math.floor(Date.now() / 1000);
+  for (const variables of [{ service: '.+', level: '.+' }, { service: 'expo-form-server', level: 'ERROR' }]) {
+    for (const { panel, target } of targets) {
+      const expression = target.expr
+        .replaceAll('$service', variables.service)
+        .replaceAll('$level', variables.level)
+        .replaceAll('$search', '')
+        .replaceAll('$__range', '10m')
+        .replaceAll('$__interval', '1m');
+      const params = new URLSearchParams({ query: expression, limit: '20' });
+      const path = target.queryType === 'instant' ? `/loki/api/v1/query?${params}` : `/loki/api/v1/query_range?${params}&start=${now - 600}&end=${now}&step=30`;
+      const result = (await loki(path)).data.result;
+      // The non-standard panel only counts legacy-out.log; every other panel follows the variables.
+      assert(result.length > 0, `${panel.title} (${JSON.stringify(variables)}): ${expression}`);
+      if (variables.level === 'ERROR' && panel.type === 'logs') {
+        assert(result.every((stream) => stream.stream.level === 'ERROR' && stream.stream.service === 'expo-form-server'), 'logs panel filter');
+      }
+    }
+  }
 });
 
 await eventually('Loki has demo logs with masked values', async () => {
