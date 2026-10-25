@@ -4,6 +4,9 @@
 services:
   prometheus:
     extra_hosts: !reset []
+    volumes:
+      # Demo datastore exporters below instead of the empty production target files.
+      - ./dev/targets:/etc/prometheus/targets:ro
   fake-services:
     image: node:22-slim
     command: ["sh", "-c", "node /app/fake-webhook.mjs & exec node /app/fake-services.mjs"]
@@ -15,6 +18,44 @@ services:
     networks:
       monitoring:
         aliases: [eureka]
+  # Demo datastores with steady traffic, so the cache and index hit ratios have real values.
+  demo-redis:
+    image: redis:7.4-alpine
+    networks: [monitoring]
+  demo-redis-load:
+    image: redis:7.4-alpine
+    command: ["sh", "/load/redis-load.sh"]
+    volumes:
+      - ./dev/datastore:/load:ro
+    depends_on: [demo-redis]
+    networks: [monitoring]
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.67.0
+    environment:
+      REDIS_ADDR: redis://demo-redis:6379
+    depends_on: [demo-redis]
+    networks: [monitoring]
+  demo-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: demo
+      POSTGRES_DB: expo_demo
+    volumes:
+      - ./dev/datastore/pg-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks: [monitoring]
+  demo-postgres-load:
+    image: postgres:17-alpine
+    command: ["sh", "/load/pg-load.sh"]
+    volumes:
+      - ./dev/datastore:/load:ro
+    depends_on: [demo-postgres]
+    networks: [monitoring]
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    environment:
+      DATA_SOURCE_NAME: postgresql://postgres:demo@demo-postgres:5432/expo_demo?sslmode=disable
+    depends_on: [demo-postgres]
+    networks: [monitoring]
   alloy:
     volumes:
       - demo-logs:/var/log/expo:ro

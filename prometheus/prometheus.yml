@@ -41,3 +41,12 @@ scrape_configs:
         target_label: service
       - source_labels: [__meta_eureka_app_instance_id]
         target_label: instance
+
+  # Datastores are not in Eureka. Each exporter is listed in a target file with the owning
+  # `service` label, so a new store needs no change here (docs/datastore-monitoring.md).
+  - job_name: redis
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/redis.yml]
+  - job_name: postgres
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/postgres.yml]
