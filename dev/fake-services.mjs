@@ -104,19 +104,29 @@ function jvmMetrics(s) {
   return out;
 }
 
+function gcDuration(kind, count, sum, bucket) {
+  const out = [];
+  for (const le of ['0.001', '0.01', '0.1', '1', '2', '5', '+Inf']) {
+    out.push(`nodejs_gc_duration_seconds_bucket{kind="${kind}",le="${le}"} ${le === '+Inf' || Number(le) >= bucket ? count : 0}`);
+  }
+  out.push(`nodejs_gc_duration_seconds_sum{kind="${kind}"} ${sum}`, `nodejs_gc_duration_seconds_count{kind="${kind}"} ${count}`);
+  return out;
+}
+
 function nodeMetrics(s) {
   return [
     'nodejs_eventloop_lag_seconds 0.001',
     'nodejs_eventloop_lag_p50_seconds 0.0011',
+    'nodejs_eventloop_lag_p90_seconds 0.0016',
     'nodejs_eventloop_lag_p99_seconds 0.002',
+    'nodejs_eventloop_lag_max_seconds 0.004',
     'process_resident_memory_bytes 50000000',
     'nodejs_heap_size_used_bytes 10000000',
     'nodejs_heap_size_total_bytes 16000000',
     `process_cpu_seconds_total ${s.total / 100}`,
-    `nodejs_gc_duration_seconds_sum{kind="minor"} ${s.total / 5000}`,
-    `nodejs_gc_duration_seconds_count{kind="minor"} ${s.total / 10}`,
-    `nodejs_gc_duration_seconds_sum{kind="major"} ${s.total / 20000}`,
-    `nodejs_gc_duration_seconds_count{kind="major"} ${s.total / 100}`,
+    // prom-client's GC histogram buckets (0.001, 0.01, 0.1, 1, 2, 5): minor pauses fall in 0.01 s, major in 0.1 s.
+    ...gcDuration('minor', s.total / 10, s.total / 5000, 0.01),
+    ...gcDuration('major', s.total / 100, s.total / 20000, 0.1),
     'nodejs_active_handles_total 12',
     'nodejs_active_requests_total 0',
   ];
