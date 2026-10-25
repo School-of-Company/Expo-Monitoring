@@ -149,7 +149,7 @@ await eventually('Grafana provisioned dashboards and datasource', async () => {
   const health = await json(`${grafana}/api/health`);
   assert.equal(health.database, 'ok');
   const dashboards = await json(`${grafana}/api/search?type=dash-db`, { Authorization: authorization });
-  assert.equal(dashboards.length, 5);
+  assert.equal(dashboards.length, 13);
   for (const dashboard of dashboards) {
     const model = (await json(`${grafana}/api/dashboards/uid/${dashboard.uid}`, { Authorization: authorization })).dashboard;
     for (const target of model.panels.flatMap((panel) => panel.targets ?? [])) {
@@ -162,6 +162,12 @@ await eventually('Grafana provisioned dashboards and datasource', async () => {
         assert(response.data.result.every((sample) => Number.isFinite(Number(sample.value[1]))), expression);
       }
       if (model.title === 'Expo Form') assert(response.data.result.length > 0, expression);
+      // Per-service dashboards of the services the demo scrapes: every panel has data with the runtime
+      // metrics of that service (JVM or Node.js). The others (user, expo, report, notification) only have to run.
+      if (['expo-svc-attention', 'expo-svc-application', 'expo-svc-form', 'expo-svc-gateway'].includes(model.uid)) {
+        assert(response.data.result.length > 0, `${model.uid}: ${expression}`);
+        assert(response.data.result.every((sample) => Number.isFinite(Number(sample.value[1]))), `${model.uid}: ${expression}`);
+      }
       // Overview: every panel has data in the demo except the alert table (no alert fires).
       if (model.uid === 'expo-overview' && !expression.startsWith('ALERTS')) {
         assert(response.data.result.length > 0, expression);
