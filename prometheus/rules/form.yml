@@ -1,0 +1,155 @@
+# Expo-Form-Server (Eureka name expo-form-server). Metric names/labels come from
+# Expo-Form-Server src/metrics and src/common/http/downstream-observer.ts.
+#
+# Not defined here on purpose (delivered by the Grafana-managed rules with panel images,
+# docs/alerting.md "Duplicate prevention"):
+#   ServiceHigh5xxRate (common, alerts.yml), FormOutboxStalled, FormDbPoolExhausted.
+#
+# Label notes:
+# - The app's downstream metric has its own `service` label (expo|user). With honor_labels=false
+#   the Eureka `service` wins and the metric's value becomes `exported_service`.
+# - Every instance counts the same DB backlog (outbox gauges): use max, never sum.
+# Thresholds are proposals until agreed with operations.
+groups:
+  - name: form
+    rules:
+      - record: form:http_latency_p95:5m
+        expr: histogram_quantile(0.95, sum by (service, le) (rate(http_server_requests_seconds_bucket{service="expo-form-server"}[5m])))
+
+      # Public survey: on-site traffic bursts hit these two routes.
+      - record: form:public_survey_requests:rate5m
+        expr: sum by (service, uri) (rate(http_server_requests_seconds_count{service="expo-form-server",uri=~"/surveys/public/:expoId|/surveys/answer/public/:expoId"}[5m]))
+      - record: form:public_survey_errors_5xx:ratio5m
+        expr: |
+          (sum by (service, uri) (rate(http_server_requests_seconds_count{service="expo-form-server",uri=~"/surveys/public/:expoId|/surveys/answer/public/:expoId",status=~"5.."}[5m]))
+            or 0 * form:public_survey_requests:rate5m)
+          / clamp_min(form:public_survey_requests:rate5m, 1e-12)
+      - record: form:public_survey_latency_p95:5m
+        expr: histogram_quantile(0.95, sum by (service, uri, le) (rate(http_server_requests_seconds_bucket{service="expo-form-server",uri=~"/surveys/public/:expoId|/surveys/answer/public/:expoId"}[5m])))
+
+      - record: form:downstream_calls:rate5m
+        expr: sum by (service, exported_service, operation, outcome) (rate(form_downstream_calls_seconds_count{service="expo-form-server"}[5m]))
+      - record: form:downstream_latency_p95:5m
+        expr: histogram_quantile(0.95, sum by (service, exported_service, operation, le) (rate(form_downstream_calls_seconds_bucket{service="expo-form-server"}[5m])))
+
+      - alert: FormHighLatency
+        expr: form:http_latency_p95:5m > 1 and service:http_requests:rate1m{service="expo-form-server"} > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }}: HTTP p95 latency above 1s for 5 minutes"
+          description: The p95 of http_server_requests_seconds is above 1 second. Traffic floor 0.1 req/s.
+          dashboard_uid: expo-form
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formhighlatency
+
+      - alert: FormPublicSurveyHigh5xxRate
+        expr: form:public_survey_errors_5xx:ratio5m > 0.05 and form:public_survey_requests:rate5m > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.uri }}: public survey 5xx above 5% for 5 minutes"
+          description: On-site visitors cannot load or submit the public survey (5xx ratio above 5%, over 0.1 req/s).
+          dashboard_uid: expo-form
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formpublicsurveyhigh5xxrate
+
+      - alert: FormPublicSurveyHighLatency
+        expr: form:public_survey_latency_p95:5m > 2 and form:public_survey_requests:rate5m > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.uri }}: public survey p95 above 2s for 5 minutes"
+          description: The public survey routes are slow under on-site load.
+          dashboard_uid: expo-form
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formpublicsurveyhighlatency
+
+      # A human must look at EXHAUSTED rows (retries gave up). The gauge never drops by itself.
+      - alert: FormOutboxExhausted
+        expr: max by (service, outbox) (form_outbox_records{service="expo-form-server",state="exhausted"}) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.outbox }} outbox: {{ $value }} record(s) exhausted retries and need manual handling"
+          description: Records in the exhausted state are not retried any more. Resolve each one, then the gauge falls to 0.
+          dashboard_uid: expo-form
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formoutboxexhausted
+
+      # reason: unparsable | unknown_status. The first sample of a new series is not counted by increase().
+      - alert: FormResultConsumerSkipping
+        expr: sum by (service, reason) (increase(form_result_consumer_skipped_total{service="expo-form-server"}[10m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "result consumer skipped messages ({{ $labels.reason }}) in the last 10 minutes"
+          description: Skipped messages are dropped. Check the message producer and schema.
+          dashboard_uid: expo-form
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formresultconsumerskipping
+
+      # result: ok | error | skipped. skipped (relay not run) is not a failure.
+      - alert: FormOutboxRelayFailing
+        expr: |
+          sum by (service, outbox) (rate(form_outbox_relay_runs_total{service="expo-form-server",result="error"}[5m]))
+          / clamp_min(sum by (service, outbox) (rate(form_outbox_relay_runs_total{service="expo-form-server",result=~"ok|error"}[5m])), 1e-12)
+          > 0.2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.outbox }} outbox relay: more than 20% of runs fail for 10 minutes"
+          description: The relay run error ratio is above 20% (ok and error runs only).
+          dashboard_uid: expo-form
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formoutboxrelayfailing
+
+      - alert: FormDownstreamFailures
+        expr: sum by (service, exported_service) (form:downstream_calls:rate5m{outcome=~"failure|timeout"}) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.exported_service }}: downstream failures/timeouts above 0.1/s for 2 minutes"
+          description: Calls from form to the expo/user service end as failure or timeout (not_found and conflict are not failures).
+          dashboard_uid: expo-form
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formdownstreamfailures
+
+      # A circuit-open or bulkhead-rejected call never reaches the service, so it is not counted by
+      # FormDownstreamFailures (failure|timeout). Without these, FormDownstreamFailures goes quiet
+      # exactly when the guard starts protecting.
+      - alert: FormDownstreamCircuitOpen
+        expr: sum by (service, exported_service) (form:downstream_calls:rate5m{outcome="circuit_open"}) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.exported_service }}: form is failing fast (circuit open) for 1 minute"
+          description: The circuit breaker for the expo/user service is open, so form answers 503 without calling it.
+          dashboard_uid: expo-form
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formdownstreamcircuitopen
+
+      - alert: FormDownstreamBulkheadFull
+        expr: sum by (service, exported_service) (form:downstream_calls:rate5m{outcome="bulkhead_full"}) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.exported_service }}: concurrent-call limit rejects calls above 0.05/s for 2 minutes"
+          description: Form rejected calls to the expo/user service because its concurrency limit and queue were full.
+          dashboard_uid: expo-form
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formdownstreambulkheadfull
+
+      - alert: FormDownstreamHighLatency
+        expr: |
+          form:downstream_latency_p95:5m > 2
+          and on (service, exported_service, operation)
+          sum by (service, exported_service, operation) (form:downstream_calls:rate5m) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.exported_service }}/{{ $labels.operation }}: p95 call latency above 2s for 5 minutes"
+          description: The expo/user service responds slowly to form (traffic floor 0.1 calls/s).
+          dashboard_uid: expo-form
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formdownstreamhighlatency

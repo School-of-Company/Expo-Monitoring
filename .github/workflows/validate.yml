@@ -16,8 +16,17 @@ jobs:
       GRAFANA_ADMIN_PASSWORD: local-demo-validation
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test digest
+        run: |
+          node --test "digest/*.test.mjs"
+          node dev/verify-digest.mjs
       - name: Validate Prometheus configuration and rules
         run: bash dev/validate-prometheus.sh
+      - name: Generated dashboards are up to date
+        run: node dev/dashboards/build.mjs --check
       - name: Verify discovery, RED records and dashboard queries
         run: |
           docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d

@@ -1,0 +1,66 @@
+rule_files:
+  - "../rules/datastore.yml"
+evaluation_interval: '15s'
+tests:
+  # Redis hit ratio per store; an idle store has no ratio.
+  - interval: '15s'
+    input_series:
+      - series: 'redis_keyspace_hits_total{job="redis",owner_service="expo-user-server",instance="user-redis"}'
+        values: '0+9x40'
+      - series: 'redis_keyspace_misses_total{job="redis",owner_service="expo-user-server",instance="user-redis"}'
+        values: '0+1x40'
+      - series: 'redis_keyspace_hits_total{job="redis",owner_service="expo-expo-server",instance="expo-redis"}'
+        values: '5x40'
+      - series: 'redis_keyspace_misses_total{job="redis",owner_service="expo-expo-server",instance="expo-redis"}'
+        values: '5x40'
+    promql_expr_test:
+      - expr: redis:keyspace_hit_ratio:rate5m
+        eval_time: 6m
+        exp_samples:
+          - labels: 'redis:keyspace_hit_ratio:rate5m{owner_service="expo-user-server",instance="user-redis"}'
+            value: 0.9
+
+  # Postgres ratios per database: template databases are left out, tables are summed per database,
+  # an idle database has no ratio.
+  - interval: '15s'
+    input_series:
+      - series: 'pg_stat_database_blks_hit{job="postgres",owner_service="expo-form-server",instance="form-db",datname="expoform"}'
+        values: '0+99x40'
+      - series: 'pg_stat_database_blks_read{job="postgres",owner_service="expo-form-server",instance="form-db",datname="expoform"}'
+        values: '0+1x40'
+      - series: 'pg_stat_database_blks_hit{job="postgres",owner_service="expo-form-server",instance="form-db",datname="template1"}'
+        values: '0+1x40'
+      - series: 'pg_stat_database_blks_read{job="postgres",owner_service="expo-form-server",instance="form-db",datname="template1"}'
+        values: '0+1x40'
+      - series: 'pg_stat_database_blks_hit{job="postgres",owner_service="expo-form-server",instance="form-db",datname="postgres"}'
+        values: '7x40'
+      - series: 'pg_stat_database_blks_read{job="postgres",owner_service="expo-form-server",instance="form-db",datname="postgres"}'
+        values: '7x40'
+      - series: 'pg_stat_user_tables_idx_scan{job="postgres",owner_service="expo-form-server",instance="form-db",datname="expoform",schemaname="public",relname="answer"}'
+        values: '0+3x40'
+      - series: 'pg_stat_user_tables_seq_scan{job="postgres",owner_service="expo-form-server",instance="form-db",datname="expoform",schemaname="public",relname="answer"}'
+        values: '0+1x40'
+      - series: 'pg_stat_user_tables_idx_scan{job="postgres",owner_service="expo-form-server",instance="form-db",datname="expoform",schemaname="public",relname="survey"}'
+        values: '0+1x40'
+      - series: 'pg_stat_user_tables_seq_scan{job="postgres",owner_service="expo-form-server",instance="form-db",datname="expoform",schemaname="public",relname="survey"}'
+        values: '0+3x40'
+      - series: 'pg_statio_user_tables_idx_blocks_hit{job="postgres",owner_service="expo-form-server",instance="form-db",datname="expoform",schemaname="public",relname="answer"}'
+        values: '0+3x40'
+      - series: 'pg_statio_user_tables_idx_blocks_read{job="postgres",owner_service="expo-form-server",instance="form-db",datname="expoform",schemaname="public",relname="answer"}'
+        values: '0+1x40'
+    promql_expr_test:
+      - expr: pg:buffer_cache_hit_ratio:rate5m
+        eval_time: 6m
+        exp_samples:
+          - labels: 'pg:buffer_cache_hit_ratio:rate5m{owner_service="expo-form-server",instance="form-db",datname="expoform"}'
+            value: 0.99
+      - expr: pg:index_scan_ratio:rate5m
+        eval_time: 6m
+        exp_samples:
+          - labels: 'pg:index_scan_ratio:rate5m{owner_service="expo-form-server",instance="form-db",datname="expoform"}'
+            value: 0.5
+      - expr: pg:index_block_hit_ratio:rate5m
+        eval_time: 6m
+        exp_samples:
+          - labels: 'pg:index_block_hit_ratio:rate5m{owner_service="expo-form-server",instance="form-db",datname="expoform"}'
+            value: 0.75

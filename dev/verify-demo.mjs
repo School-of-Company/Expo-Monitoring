@@ -10,8 +10,8 @@ async function json(url, headers = {}) {
   return response.json();
 }
 
-async function eventually(label, check) {
-  const deadline = Date.now() + 120_000;
+async function eventually(label, check, timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
   let failure;
   do {
     try {
@@ -26,7 +26,12 @@ async function eventually(label, check) {
   throw failure;
 }
 
+// Eureka-discovered targets only; the datastore exporters (jobs redis/postgres) are checked on their own.
 async function targets() {
+  return (await allTargets()).filter((target) => target.labels.job === 'eureka-services');
+}
+
+async function allTargets() {
   return (await json(`${prometheus}/api/v1/targets`)).data.activeTargets;
 }
 
@@ -37,7 +42,8 @@ async function query(expression) {
 }
 
 await eventually('Eureka opt-in, paths, healthy scrapes and exclusions', async () => {
-  const { activeTargets: active, droppedTargets: dropped } = (await json(`${prometheus}/api/v1/targets`)).data;
+  const { droppedTargets: dropped } = (await json(`${prometheus}/api/v1/targets`)).data;
+  const active = await targets();
   assert.deepEqual(active.map((target) => target.labels.instance).sort(), ['application-1', 'attendance-1', 'form-1', 'form-2', 'gateway-1']);
   assert(active.every((target) => target.health === 'up'));
   assert(active.find((target) => target.labels.instance === 'form-1').scrapeUrl.endsWith('/actuator/prometheus'));
@@ -81,10 +87,22 @@ await eventually('common RED records and zero-error gateway', async () => {
   assert((await query('gateway_http_requests_total{service="expo-gateway"}')).length > 0);
 });
 
-await eventually('all eight recording and eleven alert rules loaded', async () => {
+await eventually('all eighteen recording and twenty-one alert rules loaded, Alertmanager connected', async () => {
   const rules = (await json(`${prometheus}/api/v1/rules`)).data.groups.flatMap((group) => group.rules);
-  assert.equal(rules.length, 19);
+  assert.equal(rules.length, 39);
   assert(rules.every((rule) => rule.health === 'ok'));
+  const alertmanagers = (await json(`${prometheus}/api/v1/alertmanagers`)).data.activeAlertmanagers;
+  assert(alertmanagers.some((am) => am.url.startsWith('http://alertmanager:9093/')));
+  assert.equal((await fetch('http://alertmanager:9093/-/ready')).status, 200);
+});
+
+await eventually('Form downstream label collision becomes exported_service and form rules are idle', async () => {
+  const samples = await query('form_downstream_calls_seconds_count{service="expo-form-server"}');
+  assert.deepEqual([...new Set(samples.map((sample) => sample.metric.exported_service))].sort(), ['expo', 'user']);
+  assert.deepEqual([...new Set(samples.map((sample) => sample.metric.outcome))].sort(), ['conflict', 'failure', 'not_found', 'success', 'timeout']);
+  const rules = (await json(`${prometheus}/api/v1/rules`)).data.groups.find((group) => group.name === 'form').rules;
+  assert.equal(rules.filter((rule) => rule.type === 'alerting').length, 10);
+  assert(rules.filter((rule) => rule.type === 'alerting').every((rule) => rule.state === 'inactive'));
 });
 
 await eventually('Attendance label collision, outcome separation and healthy rule state', async () => {
@@ -103,19 +121,56 @@ await eventually('Attendance label collision, outcome separation and healthy rul
   assert(rules.filter((rule) => rule.type === 'alerting').every((rule) => rule.state === 'inactive'));
 });
 
+await eventually('Datastore exporters from target files, owner_service label and hit ratios', async () => {
+  const active = (await allTargets()).filter((target) => ['redis', 'postgres'].includes(target.labels.job));
+  assert.deepEqual(active.map((target) => `${target.labels.job}:${target.labels.owner_service}:${target.labels.instance}`).sort(), [
+    'postgres:expo-form-server:demo-postgres',
+    'redis:expo-user-server:demo-redis',
+  ]);
+  assert(active.every((target) => target.health === 'up'));
+  // Exporters also expose process_* metrics: a `service` label would put them into that service's runtime panels.
+  assert.equal((await query('count({job=~"redis|postgres",service!=""})')).length, 0, 'datastore series must not carry service');
+  // The demo load is 90% Redis hits and 3 index scans to 1 sequential scan.
+  const redis = await query('redis:keyspace_hit_ratio:rate5m');
+  assert.equal(redis.length, 1);
+  assert(Number(redis[0].value[1]) > 0.8 && Number(redis[0].value[1]) < 1, `redis ratio ${redis[0].value[1]}`);
+  for (const record of ['pg:buffer_cache_hit_ratio:rate5m', 'pg:index_scan_ratio:rate5m', 'pg:index_block_hit_ratio:rate5m']) {
+    const samples = await query(`${record}{datname="expo_demo"}`);
+    assert.equal(samples.length, 1, record);
+    assert.equal(samples[0].metric.owner_service, 'expo-form-server', record);
+    const value = Number(samples[0].value[1]);
+    assert(value > 0 && value <= 1, `${record} ${value}`);
+  }
+  const scanRatio = Number((await query('pg:index_scan_ratio:rate5m{datname="expo_demo"}'))[0].value[1]);
+  assert(scanRatio > 0.5 && scanRatio < 1, `index scan ratio ${scanRatio}`);
+});
+
 await eventually('Grafana provisioned dashboards and datasource', async () => {
   const health = await json(`${grafana}/api/health`);
   assert.equal(health.database, 'ok');
   const dashboards = await json(`${grafana}/api/search?type=dash-db`, { Authorization: authorization });
-  assert.equal(dashboards.length, 3);
+  assert.equal(dashboards.length, 14);
   for (const dashboard of dashboards) {
     const model = (await json(`${grafana}/api/dashboards/uid/${dashboard.uid}`, { Authorization: authorization })).dashboard;
     for (const target of model.panels.flatMap((panel) => panel.targets ?? [])) {
-      if (!target.expr) continue;
+      // LogQL panels (Expo / Logs) are checked against Loki below.
+      if (!target.expr || target.datasource?.type === 'loki') continue;
       const expression = target.expr.replaceAll('$service', '.*').replaceAll('$app', '.*');
       const response = await json(`${grafana}/api/datasources/proxy/uid/prometheus/api/v1/query?query=${encodeURIComponent(expression)}`, { Authorization: authorization });
       assert.equal(response.status, 'success');
       if (model.title === 'Expo Attendance') {
+        assert(response.data.result.length > 0, expression);
+        assert(response.data.result.every((sample) => Number.isFinite(Number(sample.value[1]))), expression);
+      }
+      if (model.title === 'Expo Form') assert(response.data.result.length > 0, expression);
+      // Per-service dashboards of the services the demo scrapes: every panel has data with the runtime
+      // metrics of that service (JVM or Node.js). The others (user, expo, report, notification) only have to run.
+      if (['expo-svc-attention', 'expo-svc-application', 'expo-svc-form', 'expo-svc-gateway'].includes(model.uid)) {
+        assert(response.data.result.length > 0, `${model.uid}: ${expression}`);
+        assert(response.data.result.every((sample) => Number.isFinite(Number(sample.value[1]))), `${model.uid}: ${expression}`);
+      }
+      // Overview: every panel has data in the demo except the alert table (no alert fires).
+      if (model.uid === 'expo-overview' && !expression.startsWith('ALERTS')) {
         assert(response.data.result.length > 0, expression);
         assert(response.data.result.every((sample) => Number.isFinite(Number(sample.value[1]))), expression);
       }
@@ -129,4 +184,107 @@ await eventually('Grafana provisioned dashboards and datasource', async () => {
       }
     }
   }
+});
+
+// --- Logs, traces and alerting (Loki, Tempo, Grafana provisioning, fake webhook) ---
+const loki = (path) => json(`${grafana}/api/datasources/proxy/uid/loki${path}`, { Authorization: authorization });
+
+await eventually('Loki datasource is healthy', async () => {
+  assert.equal((await json(`${grafana}/api/datasources/uid/loki/health`, { Authorization: authorization })).status, 'OK');
+});
+
+await eventually('Loki indexes only job/service/level, read from the standard JSON keys', async () => {
+  assert.deepEqual((await loki('/loki/api/v1/labels')).data.sort(), ['job', 'level', 'service']);
+  const services = (await loki('/loki/api/v1/label/service/values')).data;
+  for (const s of ['expo-form-server', 'expo-application-server']) assert(services.includes(s), s);
+  assert.deepEqual((await loki('/loki/api/v1/label/level/values')).data.sort(), ['ERROR', 'INFO', 'WARN']);
+  // module is structured metadata, filterable without being a label.
+  const outbox = await loki(`/loki/api/v1/query_range?query=${encodeURIComponent('{service="expo-application-server"} | module="outbox"')}&limit=5`);
+  assert(outbox.data.result.length > 0 && outbox.data.result.every((s) => s.stream.level === 'ERROR'), 'module filter');
+  // No fallback: a non-JSON file arrives with job only, never guessed service/level.
+  const legacy = await loki(`/loki/api/v1/query_range?query=${encodeURIComponent('{job="expo", service=""}')}&limit=5`);
+  assert(legacy.data.result.length > 0, 'non-standard lines should stay visible');
+  assert(legacy.data.result.every((s) => !s.stream.level && s.stream.filename?.endsWith('legacy-out.log')), 'non-standard labels');
+  const count = await loki(`/loki/api/v1/query?query=${encodeURIComponent('sum by (service) (count_over_time({service=~".+"}[5m]))')}`);
+  assert(count.data.result.length >= 2, 'count_over_time per service');
+});
+
+await eventually('Expo / Logs: every LogQL panel returns demo data with the variables set', async () => {
+  const model = (await json(`${grafana}/api/dashboards/uid/expo-logs`, { Authorization: authorization })).dashboard;
+  assert.deepEqual(model.templating.list.map((variable) => variable.name), ['datasource', 'service', 'level', 'search']);
+  const targets = model.panels.flatMap((panel) => (panel.targets ?? []).map((target) => ({ panel, target })));
+  assert(targets.length >= 7, 'logs panels');
+  const now = Math.floor(Date.now() / 1000);
+  for (const variables of [{ service: '.+', level: '.+' }, { service: 'expo-form-server', level: 'ERROR' }]) {
+    for (const { panel, target } of targets) {
+      const expression = target.expr
+        .replaceAll('$service', variables.service)
+        .replaceAll('$level', variables.level)
+        .replaceAll('$search', '')
+        .replaceAll('$__range', '10m')
+        .replaceAll('$__interval', '1m');
+      const params = new URLSearchParams({ query: expression, limit: '20' });
+      const path = target.queryType === 'instant' ? `/loki/api/v1/query?${params}` : `/loki/api/v1/query_range?${params}&start=${now - 600}&end=${now}&step=30`;
+      const result = (await loki(path)).data.result;
+      // The non-standard panel only counts legacy-out.log; every other panel follows the variables.
+      assert(result.length > 0, `${panel.title} (${JSON.stringify(variables)}): ${expression}`);
+      if (variables.level === 'ERROR' && panel.type === 'logs') {
+        assert(result.every((stream) => stream.stream.level === 'ERROR' && stream.stream.service === 'expo-form-server'), 'logs panel filter');
+      }
+    }
+  }
+});
+
+await eventually('Loki has demo logs with masked values', async () => {
+  const query = encodeURIComponent('{service="expo-form-server"}');
+  const result = await loki(`/loki/api/v1/query_range?query=${query}&limit=50`);
+  const streams = result.data.result;
+  assert(streams.length > 0, 'no streams');
+  const lines = streams.flatMap((stream) => stream.values.map((value) => value[1])).join('\n');
+  assert(lines.includes('<phone>') && lines.includes('<token>'), 'masking placeholders missing');
+  assert(!/01\d-?\d{3,4}-?\d{4}/.test(lines), 'phone number leaked');
+  assert(!/[A-Za-z0-9_-]{40,}/.test(lines) && !/Bearer abc/.test(lines), 'token leaked');
+  assert(/trace=[0-9a-f]{32}/.test(lines), 'trace id should stay readable');
+  // The PM2 "<time>: " prefix of expo-form-server-out.log is stripped: every stored line is the JSON itself.
+  const stored = streams.flatMap((stream) => stream.values.map((value) => value[1]));
+  assert(stored.every((line) => line.startsWith('{"@timestamp"')), `pm2 prefix left: ${stored.find((line) => !line.startsWith('{'))}`);
+});
+
+await eventually('Tempo returns a span sent over OTLP HTTP', async () => {
+  const traceId = '0af7651916cd43dd8448eb211c80319c';
+  const nano = BigInt(Date.now()) * 1000000n;
+  const post = await fetch('http://tempo:4318/v1/traces', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resourceSpans: [{ resource: { attributes: [{ key: 'service.name', value: { stringValue: 'expo-form-server' } }] }, scopeSpans: [{ spans: [{ traceId, spanId: 'b7ad6b7169203331', name: 'demo', kind: 2, startTimeUnixNano: String(nano - 200000000n), endTimeUnixNano: String(nano) }] }] }] }),
+  });
+  assert.equal(post.status, 200);
+  const trace = await json(`${grafana}/api/datasources/proxy/uid/tempo/api/traces/${traceId}`, { Authorization: authorization });
+  assert(trace.batches?.length > 0);
+}, 90_000);
+
+await eventually('Alerting provisioning: contact point, root policy and rules', async () => {
+  const headers = { Authorization: authorization };
+  const contacts = await json(`${grafana}/api/v1/provisioning/contact-points`, headers);
+  assert(contacts.some((c) => c.name === 'discord' && c.type === 'discord'));
+  const policy = await json(`${grafana}/api/v1/provisioning/policies`, headers);
+  assert.equal(policy.receiver, 'discord');
+  assert.deepEqual(policy.group_by, ['alertname', 'service']);
+  const titles = (await json(`${grafana}/api/v1/provisioning/alert-rules`, headers)).map((rule) => rule.title);
+  for (const title of ['ServiceHigh5xxRate', 'FormOutboxStalled', 'FormDbPoolExhausted']) assert(titles.includes(title), title);
+});
+
+await eventually('Firing alert reaches the webhook with a PNG attachment', async () => {
+  const received = await json('http://localhost:9999/received');
+  const hit = received.find((entry) => entry.multipart && entry.hasFile && entry.png);
+  assert(hit, `no image notification yet (${received.length} received)`);
+  assert(hit.payload.includes('FormOutboxStalled'));
+}, 300_000);
+
+await eventually('External snapshots are disabled, local ones work', async () => {
+  const headers = { Authorization: authorization, 'Content-Type': 'application/json' };
+  const { dashboard } = await json(`${grafana}/api/dashboards/uid/expo-form`, headers);
+  const create = (external) => fetch(`${grafana}/api/snapshots`, { method: 'POST', headers, body: JSON.stringify({ dashboard, name: 'verify', expires: 60, external }) });
+  assert.equal((await create(true)).status, 403);
+  assert.equal((await create(false)).status, 200);
 });

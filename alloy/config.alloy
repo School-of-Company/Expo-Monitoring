@@ -1,0 +1,96 @@
+// Tails *.log under /var/log/expo (LOG_DIR on the host) and pushes to Loki.
+//   - production: LOG_DIR = the PM2 log directory (<service>-out.log, <service>-error.log)
+//   - local dev:  LOG_DIR = EXPO_LOG_DIR of the services (<service>/app.log, written with the local profile)
+//
+// Every service writes the Expo log standard (docs/logging.md): one JSON object per
+// line with @timestamp, level (uppercase), service, module and message. This pipeline
+// reads exactly those keys and has NO per-service fallback: a service whose lines do
+// not parse is fixed in the service, not here. Such lines still arrive (job label only,
+// no service/level) so they show up instead of being dropped.
+//
+// Labels are only job, service and level: phone numbers, tokens and request ids must
+// never become labels (cardinality and personal data). module and filename are
+// structured metadata (queryable, not indexed).
+
+local.file_match "expo" {
+  path_targets = [{"__path__" = "/var/log/expo/**/*.log", "job" = "expo"}]
+  sync_period  = "10s"
+}
+
+loki.source.file "expo" {
+  targets       = local.file_match.expo.targets
+  forward_to    = [loki.process.expo.receiver]
+  tail_from_end = false
+}
+
+loki.process "expo" {
+  // PM2 started with a log date format writes "<time>: " before every line it captures
+  // (production: "2026-10-24T20:39:06: {...}"). That prefix comes from the transport, not
+  // from a service, so it is removed for every file before the line is read as JSON.
+  stage.regex {
+    expression = "^(?:\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:?\\d{2})?: )?(?P<line>.*)$"
+  }
+  stage.output {
+    source = "line"
+  }
+
+  stage.json {
+    expressions = {
+      level     = "",
+      service   = "",
+      module    = "",
+      timestamp = "\"@timestamp\"",
+    }
+  }
+
+  stage.timestamp {
+    source = "timestamp"
+    format = "RFC3339Nano"
+  }
+
+  stage.labels {
+    values = {
+      service = "",
+      level   = "",
+    }
+  }
+
+  // filename points at the offending file when a line does not follow the standard.
+  stage.structured_metadata {
+    values = {
+      module   = "",
+      filename = "",
+    }
+  }
+
+  // Masking. Order matters: tokens first, then phone numbers. 32-hex trace ids
+  // (trace=<id>) are shorter than the 40-char token rule and stay readable.
+  stage.replace {
+    expression = "(eyJ[A-Za-z0-9_-]{5,}\\.[A-Za-z0-9_-]{5,}\\.[A-Za-z0-9_-]{5,})"
+    replace    = "<jwt>"
+  }
+  stage.replace {
+    expression = "(?i)bearer\\s+([A-Za-z0-9._~+/=-]{8,})"
+    replace    = "<token>"
+  }
+  stage.replace {
+    expression = "([A-Za-z0-9_-]{40,})"
+    replace    = "<token>"
+  }
+  stage.replace {
+    expression = "\\b(01[016-9]-?[0-9]{3,4}-?[0-9]{4})\\b"
+    replace    = "<phone>"
+  }
+
+  stage.label_drop {
+    values = ["filename"]
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

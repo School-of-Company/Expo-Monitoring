@@ -1,13 +1,77 @@
 # Local demo: fake Eureka, Spring/Gateway metrics and excluded instances.
 #   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d
+# Fake services also write PM2-style log files into a shared volume that Alloy tails.
 services:
   prometheus:
     extra_hosts: !reset []
+    volumes:
+      # Demo datastore exporters below instead of the empty production target files.
+      - ./dev/targets:/etc/prometheus/targets:ro
   fake-services:
     image: node:22-slim
-    command: ["node", "/app/fake-services.mjs"]
+    command: ["sh", "-c", "node /app/fake-webhook.mjs & exec node /app/fake-services.mjs"]
+    environment:
+      LOG_DIR: /var/log/expo
     volumes:
       - ./dev:/app:ro
+      - demo-logs:/var/log/expo
     networks:
       monitoring:
         aliases: [eureka]
+  # Demo datastores with steady traffic, so the cache and index hit ratios have real values.
+  demo-redis:
+    image: redis:7.4-alpine
+    networks: [monitoring]
+  demo-redis-load:
+    image: redis:7.4-alpine
+    command: ["sh", "/load/redis-load.sh"]
+    volumes:
+      - ./dev/datastore:/load:ro
+    depends_on: [demo-redis]
+    networks: [monitoring]
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.67.0
+    environment:
+      REDIS_ADDR: redis://demo-redis:6379
+    depends_on: [demo-redis]
+    networks: [monitoring]
+  demo-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: demo
+      POSTGRES_DB: expo_demo
+    volumes:
+      - ./dev/datastore/pg-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks: [monitoring]
+  demo-postgres-load:
+    image: postgres:17-alpine
+    command: ["sh", "/load/pg-load.sh"]
+    volumes:
+      - ./dev/datastore:/load:ro
+    depends_on: [demo-postgres]
+    networks: [monitoring]
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    environment:
+      DATA_SOURCE_NAME: postgresql://postgres:demo@demo-postgres:5432/expo_demo?sslmode=disable
+    depends_on: [demo-postgres]
+    networks: [monitoring]
+  alloy:
+    volumes:
+      - demo-logs:/var/log/expo:ro
+  alertmanager:
+    volumes:
+      # Short waits/repeat for the demo; the production file is checked by amtool in CI.
+      - ./dev/alertmanager.demo.yml:/etc/alertmanager/alertmanager.yml:ro
+  grafana:
+    environment:
+      # Local fake webhook (dev/fake-webhook.mjs) instead of a real Discord URL.
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-http://fake-services:9999/webhook}
+
+# Fake (non-secret) webhook for Alertmanager; Grafana uses DISCORD_WEBHOOK_URL above.
+secrets:
+  discord_webhook_url: !override
+    file: ./dev/alertmanager-demo-webhook-url
+
+volumes:
+  demo-logs:

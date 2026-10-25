@@ -8,12 +8,17 @@
 |---|---|---|
 | `GRAFANA_ADMIN_PASSWORD` | `admin` | Grafana 초기 관리자 비밀번호. `.env.example`의 `change-me`와 기본값을 실제 환경에서 사용하지 않습니다. 기존 Grafana 데이터가 있으면 이 변수 변경만으로 관리자 비밀번호가 교체되지 않습니다. |
 | `EUREKA_HOST` | `host-gateway` | `eureka` 이름에 매핑할 주소. Eureka가 Docker 호스트에서 실행되면 비워 두고, 다른 호스트라면 그 주소를 설정합니다. 포트는 변경하지 않습니다. |
+| `DISCORD_WEBHOOK_URL` | Grafana: 연결 불가 자리표시 주소 / Alertmanager: 빈 값 | Grafana 연락처와 Alertmanager(compose secret 파일)의 웹훅. 비밀이므로 서버 `.env`에만 둡니다. [알림 문서](alerting.md) |
+| `GRAFANA_ROOT_URL` | `http://127.0.0.1:3001` | 알림 메시지의 대시보드·패널·silence 링크 기준 주소 |
+| `LOG_DIR` | `./logs`(빈 디렉터리) | Alloy가 읽기 전용으로 마운트할 로그 디렉터리. 운영은 PM2 로그 디렉터리, 로컬은 서비스의 `EXPO_LOG_DIR`(기본 `~/.expo/logs`). `*.log`를 하위 경로까지 수집. 실제 경로는 서버에서 확인. [로그 표준](logging.md) |
+| `LOKI_RETENTION_PERIOD` | `168h` | 로그 보존 기간 |
+| `TEMPO_RETENTION_PERIOD` | `168h` | 추적 보존 기간 |
 
-`.env`는 커밋하지 않습니다. Compose의 Prometheus/Grafana 공개 포트는 각각 `127.0.0.1:9090`, `127.0.0.1:3001`이고 SSH 터널로 접근합니다. 데모에서는 `EUREKA_HOST` 매핑을 제거하고 가짜 서비스의 네트워크 별칭으로 Eureka를 찾습니다.
+`.env`는 커밋하지 않습니다. Compose의 Prometheus/Grafana/Alertmanager 공개 포트는 각각 `127.0.0.1:9090`, `127.0.0.1:3001`, `127.0.0.1:9093`이고 SSH 터널로 접근합니다. Tempo의 OTLP(`127.0.0.1:4317`, `4318`)도 loopback에만 publish하며, Loki·Alloy·이미지 렌더러는 publish하지 않습니다. 데모에서는 `EUREKA_HOST` 매핑을 제거하고 가짜 서비스의 네트워크 별칭으로 Eureka를 찾습니다.
 
 ## New server: binaries and pm2
 
-GitHub 워크플로는 `prometheus/`, `grafana/`만 묶어서 업로드합니다. `.env`와 `docker-compose.yml`을 전송하거나 실행하지 않으므로 Compose의 `GRAFANA_ADMIN_PASSWORD`, `EUREKA_HOST`가 서버 프로세스에 자동 적용되지 않습니다.
+GitHub 워크플로는 `prometheus/`, `grafana/`, `loki/`, `alloy/`를 묶어서 업로드합니다. 서버의 `deploy.sh`가 Loki·Alloy를 실행하고 경로·주소를 치환해야 하며([로그 표준](logging.md#운영-배포-미검증)), `tempo/`와 Tempo·렌더러 서비스는 아직 이 배포 경로에 포함되어 있지 않아 서버에서 바이너리/pm2로 어떻게 띄울지 정해야 합니다(미확정, 서버의 Docker 사용 가능 여부도 미확인). `.env`와 `docker-compose.yml`을 전송하거나 실행하지 않으므로 Compose의 `GRAFANA_ADMIN_PASSWORD`, `EUREKA_HOST`가 서버 프로세스에 자동 적용되지 않습니다.
 
 - Grafana는 서버에서 `GF_SECURITY_ADMIN_PASSWORD` 또는 Grafana 설정 파일의 `[security] admin_password`를 설정해야 합니다. 서버의 실제 설정 방식과 기존 관리자 비밀번호는 별도 확인이 필요합니다. 기존 DB의 비밀번호 변경은 Grafana 관리자 절차를 사용합니다.
 - Prometheus 설정의 Eureka 주소는 기본 `http://eureka:8761/eureka`입니다. 서버 배포 스크립트가 실제 주소로 변환하는지, 실제 포트·경로가 맞는지 배포 결과 파일에서 확인합니다. Compose 이름 해석을 바이너리 실행에 그대로 적용하지 않습니다.
@@ -41,8 +46,21 @@ Eureka 인스턴스에 `prometheus.scrape="true"`, 숫자 `prometheus.port`, 필
 - 메트릭 listener는 Prometheus에서 접근 가능한 내부 주소에 바인딩합니다. 같은 호스트의 바이너리라면 loopback이 가능하지만, 다른 컨테이너/호스트에서 수집할 때 서비스의 loopback만으로는 접근할 수 없습니다.
 - 메트릭 포트를 공용 인터넷에 공개하지 말고 Prometheus의 실제 출발지에서만 허용합니다. 서비스 등록 시 광고된 IP와 메트릭 포트가 그 경로로 접근 가능한지 확인합니다.
 - Eureka와 대상 서비스를 기동한 뒤 Prometheus `/api/v1/targets`에서 Gateway 포함 대상, `health=up`, 마지막 scrape 오류, 제외된 metadata를 확인합니다. 인스턴스 추가·삭제가 새로고침 없이 반영되는지도 확인합니다.
-- Prometheus `/-/ready`, `/api/v1/rules`, Grafana `/api/health`와 세 대시보드의 datasource 쿼리를 확인합니다. 알림은 Prometheus UI에만 표시하며 Alertmanager와 알림 수신 환경 변수는 없습니다.
+- Prometheus `/-/ready`, `/api/v1/rules`, Grafana `/api/health`와 세 대시보드의 datasource 쿼리를 확인합니다. Alertmanager는 Compose(개발·검증용)에만 있고 **운영 서버 배포 방식은 미정**입니다([알림 문서](alerting.md)의 "운영 배포"). `deploy.yml`은 아직 `alertmanager/`를 올리지 않습니다.
 - 운영 확인 기록에는 시각, 배포 SHA, 대상 서비스·인스턴스, scrape 결과, 내부 접근 경로와 방화벽 조건만 남깁니다. 토큰·비밀번호·SSH 키는 기록하지 않습니다.
+
+## Verification status (2026-10-24)
+
+운영 Grafana(11.3.0)를 SSH 터널로 읽기 전용 조회한 결과입니다. 아무것도 바꾸지 않았습니다.
+
+- Prometheus 대상(job `eureka-services`) 7개 `up`: Attention, Report, Expo, User, Application(각 서비스 포트), Form, Gateway(메트릭 포트). Spring 5개는 저장소 설정이 아니라 서버 쪽 설정으로 `/actuator/prometheus`와 Eureka metadata가 켜져 있습니다.
+- **Notification은 수집되지 않습니다.** Eureka에 `127.0.0.1:expo-notification-server:26117`로 등록되지만 `prometheus.*` metadata가 없어 제외됩니다. Notification은 메트릭 listener 주소가 광고 IP와 같을 때만 metadata를 붙이므로, 서버의 `METRICS_ENABLED`/`METRICS_HOST`/`METRICS_PORT`를 확인해야 합니다.
+- HTTP 히스토그램(`http_server_requests_seconds_bucket`)은 Spring 5개와 Form에 있습니다(서비스별 p95 가능). Lettuce 지표는 User만 있고 Expo·Application은 아직 Redis 명령 기록이 없습니다.
+- Redis·Postgres exporter 대상은 없습니다(Overview의 캐시·DB 구역은 `prometheus/targets/*.yml`이 채워질 때까지 비어 있습니다).
+- **운영 Loki는 이 저장소의 Alloy 설정으로 수집되고 있지 않습니다.** 라벨이 `job="expo"`, `service`(PM2 이름: `attention`, `user`, …, `kafka`, `vault` 등 서버 전체), `service_name`, `stream`(out/err)이고 `level` 라벨이 없습니다. Form·Gateway·Notification 로그는 없습니다. [로그 표준](logging.md)의 라벨과 Logs 대시보드가 동작하려면 서버가 `alloy/config.alloy`로 PM2 로그 디렉터리를 수집해야 합니다.
+- PM2는 줄마다 `2026-10-24T20:39:06: ` 시각 접두어를 붙입니다. Alloy가 이를 걷어 냅니다([로그 표준](logging.md)).
+- 운영 Loki 데이터 소스는 UI에서 만든 것(`readOnly: false`, uid `eg1w5x8vr49hcd`, 이름 `Loki`)입니다. 저장소 프로비저닝은 같은 이름에 uid `loki`이므로, 릴리스 때 수동 데이터 소스를 정리하고 프로비저닝 데이터 소스(uid `loki`)가 쓰이는지 확인합니다. trace 링크·Tempo 연결·대시보드 기본값이 uid `loki`를 씁니다.
+- 운영 대시보드는 `main` 시점의 3개(Attendance, Gateway, MSA Service Overview)뿐입니다. develop의 Form·Overview·서비스별·Logs 대시보드는 릴리스 후 생깁니다.
 
 ## Verification status (2026-10-12)
 

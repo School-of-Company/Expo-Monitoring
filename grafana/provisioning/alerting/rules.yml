@@ -1,0 +1,109 @@
+apiVersion: 1
+
+# Grafana-managed rules, only for alerts that should carry a panel image.
+# prometheus/rules/ stays the source for the Prometheus UI alerts (issue #15, option b).
+# __dashboardUid__/__panelId__ make Grafana screenshot the panel when it fires.
+groups:
+  - orgId: 1
+    name: expo-grafana-alerts
+    folder: Expo
+    interval: 1m
+    rules:
+      - uid: grafana-service-5xx
+        title: ServiceHigh5xxRate
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "5xx 응답 비율이 5%를 넘었습니다 (5분 지속, 요청률 0.1 req/s 이상)"
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#servicehigh5xxrate
+          __dashboardUid__: msa-overview
+          __panelId__: "8"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: service:http_errors_5xx:ratio1m and on (service) (service:http_requests:rate1m > 0.1)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, settings: {mode: dropNN}}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0.05]}
+
+      - uid: grafana-form-outbox-stalled
+        title: FormOutboxStalled
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "아웃박스 가장 오래된 미발행 건이 300초를 넘었습니다 (값 단위: 초)"
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formoutboxstalled
+          __dashboardUid__: expo-form
+          __panelId__: "1"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: max by (service, outbox) (form_outbox_oldest_pending_age_seconds)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, settings: {mode: dropNN}}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [300]}
+
+      - uid: grafana-form-db-pool
+        title: FormDbPoolExhausted
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "DB 연결 풀에서 대기 중인 요청이 5분 넘게 있습니다 (값: 대기 수)"
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#formdbpoolexhausted
+          __dashboardUid__: expo-form
+          __panelId__: "2"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: min by (service) (form_db_pool_connections{state="waiting"})
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, settings: {mode: dropNN}}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0]}
