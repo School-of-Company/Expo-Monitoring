@@ -85,6 +85,23 @@ Form이 박람회(`expo`)·유저(`user`) 서비스를 호출하다 실패·타�
 2. 해당 서비스의 5xx/지연 알림과 Eureka 상태를 확인합니다.
 3. 타임아웃 위주면 상대 서비스 지연, 실패 위주면 연결·5xx를 의심합니다.
 
+## FormDownstreamCircuitOpen
+
+Form이 박람회(`expo`)·유저(`user`) 서비스 호출 중 일부를 회로 차단기로 막아(`circuit_open`) 호출하지 않고 바로 503을 돌려주는 상태가 1분 지속. 최근 30초 동안 호출이 10번 이상이고 실패율이 50%를 넘으면 열리고 30초 뒤 다시 시도합니다. 회로가 열리면 `FormDownstreamFailures`(`failure`, `timeout`)는 오히려 잠잠해지므로, 이 알림이 장애의 신호입니다.
+
+1. 알림의 `exported_service`로 어느 서비스가 죽었는지 확인하고 그 서비스의 5xx·지연 알림과 Eureka 상태를 봅니다.
+2. 영향은 회로가 막은 호출입니다. `expo`는 폼·설문 생성과 폼 수정 예약, `user`는 참가자 설문 제출·세션 확인입니다.
+3. 상대 서비스가 복구되면 30초 안에 자동으로 닫힙니다. 계속 열려 있으면 `Downstream calls by outcome` 패널에서 `failure`가 다시 늘어나는지 봅니다.
+4. 폼 수정 예약 해제는 회로를 거치지 않으므로 이 상황에서도 예약이 남지 않습니다.
+
+## FormDownstreamBulkheadFull
+
+Form이 박람회·유저 서비스 호출을 동시 호출 상한(기본 20개 + 대기 10개)을 넘어 거절(`bulkhead_full`)하는 비율이 초당 0.05를 넘은 상태가 2분 지속. 상대 서비스가 느려져 호출이 쌓이거나, 정상 트래픽이 상한보다 큰 경우입니다.
+
+1. `FormDownstreamHighLatency`가 함께 발화했는지 봅니다. 그렇다면 상대 서비스 지연이 원인입니다.
+2. 지연이 없는데 거절만 있으면 트래픽이 상한보다 큰 것입니다. `DOWNSTREAM_BULKHEAD_MAX_CONCURRENT`, `DOWNSTREAM_BULKHEAD_MAX_QUEUE`를 올리는 것을 검토합니다.
+3. 거절된 요청은 503으로 끝나므로 영향을 받은 경로(`operation`)를 확인합니다.
+
 ## FormDownstreamHighLatency
 
 박람회·유저 서비스 호출의 p95가 2초를 넘은 상태가 5분 지속(초당 0.1회 이상).

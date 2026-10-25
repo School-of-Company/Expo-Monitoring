@@ -38,6 +38,8 @@ Alloy는 `LOG_DIR`(호스트)을 `/var/log/expo`에 읽기 전용으로 마운�
 | 운영(PM2) | stdout만. PM2가 `<name>-out.log`(stdout), `<name>-error.log`(stderr)로 남김. 서비스에 로그 파일 설정을 두지 않음 | PM2 로그 디렉터리(기본 `~/.pm2/logs`, 서버에서 확인) |
 | 로컬 | stdout + `local` 프로필에서 `${EXPO_LOG_DIR:-~/.expo/logs}/<service>/app.log` 미러 | 서비스의 `EXPO_LOG_DIR`(예: `~/.expo/logs`) |
 
+운영 PM2는 로그 날짜 형식(`log_date_format`)을 켜 두어 줄마다 `2026-10-24T20:39:06: ` 같은 시각을 앞에 붙입니다. 서비스가 아니라 전송 경로가 붙이는 것이라 Alloy가 모든 파일에서 이 접두어를 먼저 걷어 낸 뒤 JSON으로 읽습니다(서비스별 보정이 아닙니다).
+
 PM2 `-error.log`에는 크래시 스택 등 JSON이 아닌 stderr가 남을 수 있습니다. 이런 줄은 위의 `{job="expo", service=""}`로 보입니다.
 
 ## 운영 배포 (미검증)

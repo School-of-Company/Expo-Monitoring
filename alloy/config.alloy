@@ -24,6 +24,16 @@ loki.source.file "expo" {
 }
 
 loki.process "expo" {
+  // PM2 started with a log date format writes "<time>: " before every line it captures
+  // (production: "2026-10-24T20:39:06: {...}"). That prefix comes from the transport, not
+  // from a service, so it is removed for every file before the line is read as JSON.
+  stage.regex {
+    expression = "^(?:\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:?\\d{2})?: )?(?P<line>.*)$"
+  }
+  stage.output {
+    source = "line"
+  }
+
   stage.json {
     expressions = {
       level     = "",
