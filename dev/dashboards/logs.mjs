@@ -21,6 +21,9 @@ const errors = '{job="expo", service=~"$service", level="ERROR"}';
 // Lines that do not follow the standard arrive without service/level (docs/logging.md).
 const nonStandard = '{job="expo", service=""}';
 
+/** Loki `line_format` 템플릿: 표준 JSON 줄은 한 줄 요약, 그 밖의 줄은 원문. */
+const READABLE_LINE = '{{ if .level }}{{ .level }}  {{ .service | replace "expo-" "" | replace "-server" "" }}  [{{ .module }}]  {{ .message }}{{ else }}{{ __line__ }}{{ end }}';
+
 export function logsDashboard() {
   return dashboard({
     uid: 'expo-logs',
@@ -79,8 +82,11 @@ export function logsDashboard() {
         { ds: LOKI, description: 'module은 structured metadata(로거 이름·Nest 컨텍스트에서 자동 파생)입니다.' },
       ),
       row('실시간 로그'),
-      logs('로그', `${selected} |= "$search"`, {
-        description: '선택한 서비스·레벨·검색어의 로그(최신순). 줄을 누르면 module·requestId·traceId·stack_trace 등 모든 키를 봅니다. 대시보드 새로고침 주기로 갱신되며, 끊김 없는 스트리밍은 Explore의 Live를 씁니다.',
+      // JSON 한 줄을 `LEVEL  서비스  [모듈]  메시지`로 줄여 보여 준다. JSON이 아닌 줄(표준 위반)은 원문 그대로 둔다.
+      // 줄을 눌러 펼치면 원래 JSON의 모든 키(traceId·stack_trace 등)가 그대로 보인다.
+      logs('로그', `${selected} |= "$search" | json | line_format \`${READABLE_LINE}\``, {
+        h: 30,
+        description: '선택한 서비스·레벨·검색어의 로그(최신순). 읽기 쉽게 `레벨 서비스(expo-·-server 생략) [모듈] 메시지`로 줄여 보여 줍니다. 줄을 누르면 module·requestId·traceId·stack_trace 등 원래 JSON의 모든 키를 봅니다. 대시보드 새로고침 주기로 갱신되며, 끊김 없는 스트리밍은 Explore의 Live를 씁니다.',
       }),
     ],
   });
