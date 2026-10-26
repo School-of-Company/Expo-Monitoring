@@ -87,6 +87,14 @@ function jvmMetrics(s) {
     'jvm_memory_max_bytes{area="heap",id="G1 Eden Space"} -1',
     'jvm_memory_max_bytes{area="heap",id="G1 Old Gen"} 536870912',
     'jvm_gc_overhead 0.01',
+    // Micrometer's GC pause timer: a summary (count/sum) plus a decaying max, labelled by collector and action.
+    `jvm_gc_pause_seconds_count{action="end of minor GC",cause="G1 Evacuation Pause",gc="G1 Young Generation"} ${s.total / 10}`,
+    `jvm_gc_pause_seconds_sum{action="end of minor GC",cause="G1 Evacuation Pause",gc="G1 Young Generation"} ${s.total / 2000}`,
+    'jvm_gc_pause_seconds_max{action="end of minor GC",cause="G1 Evacuation Pause",gc="G1 Young Generation"} 0.011',
+    // SLO buckets the services publish (management.metrics.distribution.slo.jvm.gc.pause): every pause lands in 25 ms.
+    ...['0.001', '0.005', '0.01', '0.025', '0.05', '0.1', '0.25', '0.5', '1.0', '2.0', '+Inf'].map(
+      (le) => `jvm_gc_pause_seconds_bucket{action="end of minor GC",cause="G1 Evacuation Pause",gc="G1 Young Generation",le="${le}"} ${le === '+Inf' || Number(le) >= 0.025 ? s.total / 10 : 0}`,
+    ),
     `jvm_gc_memory_allocated_bytes_total ${s.total * 200000}`,
     'jvm_threads_live_threads 42',
     'jvm_threads_daemon_threads 30',
@@ -104,19 +112,29 @@ function jvmMetrics(s) {
   return out;
 }
 
+function gcDuration(kind, count, sum, bucket) {
+  const out = [];
+  for (const le of ['0.001', '0.01', '0.1', '1', '2', '5', '+Inf']) {
+    out.push(`nodejs_gc_duration_seconds_bucket{kind="${kind}",le="${le}"} ${le === '+Inf' || Number(le) >= bucket ? count : 0}`);
+  }
+  out.push(`nodejs_gc_duration_seconds_sum{kind="${kind}"} ${sum}`, `nodejs_gc_duration_seconds_count{kind="${kind}"} ${count}`);
+  return out;
+}
+
 function nodeMetrics(s) {
   return [
     'nodejs_eventloop_lag_seconds 0.001',
     'nodejs_eventloop_lag_p50_seconds 0.0011',
+    'nodejs_eventloop_lag_p90_seconds 0.0016',
     'nodejs_eventloop_lag_p99_seconds 0.002',
+    'nodejs_eventloop_lag_max_seconds 0.004',
     'process_resident_memory_bytes 50000000',
     'nodejs_heap_size_used_bytes 10000000',
     'nodejs_heap_size_total_bytes 16000000',
     `process_cpu_seconds_total ${s.total / 100}`,
-    `nodejs_gc_duration_seconds_sum{kind="minor"} ${s.total / 5000}`,
-    `nodejs_gc_duration_seconds_count{kind="minor"} ${s.total / 10}`,
-    `nodejs_gc_duration_seconds_sum{kind="major"} ${s.total / 20000}`,
-    `nodejs_gc_duration_seconds_count{kind="major"} ${s.total / 100}`,
+    // prom-client's GC histogram buckets (0.001, 0.01, 0.1, 1, 2, 5): minor pauses fall in 0.01 s, major in 0.1 s.
+    ...gcDuration('minor', s.total / 10, s.total / 5000, 0.01),
+    ...gcDuration('major', s.total / 100, s.total / 20000, 0.1),
     'nodejs_active_handles_total 12',
     'nodejs_active_requests_total 0',
   ];
