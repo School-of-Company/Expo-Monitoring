@@ -25,6 +25,14 @@ GitHub 워크플로는 `prometheus/`, `grafana/`, `loki/`, `alloy/`를 묶어서
 - 서버 배포 스크립트가 룰 경로 `/etc/prometheus/rules`, Grafana datasource `http://prometheus:9090`, 대시보드 경로 `/var/lib/grafana/dashboards`를 실제 서버 경로·주소로 변환하는지도 확인합니다.
 - Grafana·Prometheus의 HTTP listener를 loopback에 두고, 데이터 디렉터리와 관리자 설정을 릴리스 교체·롤백 시 보존합니다. 실제 listener/데이터 경로/방화벽은 저장소에서 확정할 수 없습니다.
 
+## Kafka 컨슈머 지표 (#36)
+
+`alloy/kafka.alloy`가 Alloy의 내장 Kafka exporter(`prometheus.exporter.kafka`)로 브로커의 컨슈머 그룹 lag과 토픽 오프셋을 읽어 `prometheus.remote_write`로 Prometheus `/api/v1/write`에 넣습니다. Prometheus는 `--web.enable-remote-write-receiver`로 실행해야 합니다(Compose에는 추가됨).
+
+- **운영과 Compose의 차이**: 운영 서버에는 비어 있는 고정 포트가 없어 독립 `kafka-exporter`를 띄워 scrape하지 않고, 이미 실행 중인 Alloy 안에서 수집해 push합니다. 브로커는 같은 호스트의 `127.0.0.1:26111`(PM2 `expo-kafka`)이고 Prometheus는 `127.0.0.1:26114`입니다. 운영 Alloy가 `kafka.alloy`를 함께 로드하고 remote write 주소를 서버 주소로 바꾸는 것은 서버 쪽 스크립트가 합니다(이 저장소의 `deploy.sh` 밖).
+- Compose에는 Kafka가 없어 `kafka.alloy`를 로드하지 않습니다. 브로커에 닿지 못하는 exporter가 로그 파이프라인(`config.alloy`)까지 멈추지 않게 파일을 나눴습니다. CI는 `alloy fmt`로 문법만 검사합니다. 로컬 Kafka로 시험하려면 Alloy에 `KAFKA_URI`(기본 `127.0.0.1:26111`)를 주고 `alloy/` 디렉터리 전체를 로드합니다. `PROMETHEUS_REMOTE_WRITE_URL`의 기본값은 `http://prometheus:9090/api/v1/write`입니다.
+- 실제 시계열 라벨은 `job="integrations/kafka"`, `instance=<브로커 주소>`입니다(exporter 라벨이 `job_name`보다 우선). 2026-10-28 운영에서 수집을 확인했고, 그 시점의 그룹은 Form(`survey-answer-result`), Notification(`sms` 등), User, Expo(`standard-created`)이며 `expo-*-server.expo-changed` 그룹은 각 서비스가 `KAFKA_EXPO_PROJECTION_ENABLED`를 켠 뒤 생깁니다.
+
 ## GitHub deployment settings
 
 | 구분 | 이름 | 용도 |
