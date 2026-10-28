@@ -149,7 +149,7 @@ await eventually('Grafana provisioned dashboards and datasource', async () => {
   const health = await json(`${grafana}/api/health`);
   assert.equal(health.database, 'ok');
   const dashboards = await json(`${grafana}/api/search?type=dash-db`, { Authorization: authorization });
-  assert.equal(dashboards.length, 14);
+  assert.equal(dashboards.length, 15);
   for (const dashboard of dashboards) {
     const model = (await json(`${grafana}/api/dashboards/uid/${dashboard.uid}`, { Authorization: authorization })).dashboard;
     for (const target of model.panels.flatMap((panel) => panel.targets ?? [])) {
@@ -271,7 +271,7 @@ await eventually('Alerting provisioning: contact point, root policy and rules', 
   assert.equal(policy.receiver, 'discord');
   assert.deepEqual(policy.group_by, ['alertname', 'service']);
   const titles = (await json(`${grafana}/api/v1/provisioning/alert-rules`, headers)).map((rule) => rule.title);
-  for (const title of ['ServiceHigh5xxRate', 'FormOutboxStalled', 'FormDbPoolExhausted']) assert(titles.includes(title), title);
+  for (const title of ['ServiceHigh5xxRate', 'FormOutboxStalled', 'FormDbPoolExhausted', 'ExpoChangedConsumerLag', 'ExpoChangedDeadLetter', 'ExpoChangedConsumerStalled']) assert(titles.includes(title), title);
 });
 
 await eventually('Firing alert reaches the webhook with a PNG attachment', async () => {

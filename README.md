@@ -47,7 +47,7 @@ Spring(Micrometer)과 NestJS 모두 `http_server_requests_seconds{method,status,
 
 ## 알림 (`prometheus/rules/alerts.yml`)
 
-이 규칙은 Alertmanager를 거쳐 Discord로 가고(복구 알림 포함), Prometheus UI의 Alerts 탭에서도 보입니다. 그래프 이미지가 붙는 Grafana 관리 알림 3개는 Alertmanager에서 제외해 중복되지 않습니다. 구성·웹훅 주입·운영 배포(미정)는 [알림 문서](docs/alerting.md)를 참고하세요.
+이 규칙은 Alertmanager를 거쳐 Discord로 가고(복구 알림 포함), Prometheus UI의 Alerts 탭에서도 보입니다. 그래프 이미지가 붙는 Grafana 관리 알림 3개는 Alertmanager에서 제외해 중복되지 않습니다. Kafka 컨슈머 알림(`ExpoChanged*`)은 Grafana 관리 규칙만 있습니다. 구성·웹훅 주입·운영 배포(미정)는 [알림 문서](docs/alerting.md)를 참고하세요.
 
 - `ServiceDown`: Eureka에 있는데 scrape가 1분간 실패. 크래시한 인스턴스를 Eureka가 evict하면 target이 사라져 알림도 해소되므로, 장애 기록으로 쓰지 마세요.
 - `ServiceHigh5xxRate`: 서비스별 5xx > 5% (5분), 요청률 0.1 req/s 미만이면 제외
@@ -61,6 +61,7 @@ Spring(Micrometer)과 NestJS 모두 `http_server_requests_seconds{method,status,
 - **Expo / Logs** (`expo-logs`): 로그 전용(Loki). 서비스·레벨·검색어 변수, 로그량·서비스별 ERROR·레벨 분포·비중 추이·ERROR 모듈 상위·표준 위반 줄, 걸러진 로그 스트림([로그 표준](docs/logging.md#로그-대시보드)).
 - **MSA Service Overview**: `$service` 변수로 전환하는 RED + 인스턴스 + 런타임(JVM/Node). digest가 패널 이미지를 쓰므로 그대로 둡니다.
 - **Expo / <서비스>** (`expo-svc-<이름>`, 8개): 서비스별 수집 상태·UP 인스턴스·힙 게이지·스레드(JVM)/핸들(Node) 요약, 상태 코드별 요청·5xx·p50/p95/p99·상위 경로, 런타임(JVM: 힙·GC 오버헤드·할당·CPU·스레드·Hikari 풀, Redis를 쓰면 Lettuce 명령 수·지연 / Node: 이벤트 루프 지연·힙·GC·RSS·CPU·핸들). 상단 링크로 Overview와 도메인 대시보드(Attendance·Form·Gateway)로 갑니다. 지표 이름은 실제 서비스가 내는 것(Spring Boot 4.1 Micrometer: `jvm_gc_overhead`, `lettuce_seconds`; prom-client 15 기본값)에 맞췄습니다. Config Server는 메트릭을 내지 않고 Eureka에 없어 대시보드가 없습니다. 서비스 목록은 `dev/dashboards/services.mjs`입니다.
+- **Expo / Kafka 이벤트 소비** (`expo-kafka`, `dev/dashboards/kafka.mjs`): `expo.expo.changed` 컨슈머 그룹별 lag, DLT/DLQ 유입, 커밋 오프셋과 토픽 끝 오프셋, 전체 그룹 lag·멤버 수. 지표는 Alloy의 Kafka exporter(`alloy/kafka.alloy`, 운영만)가 remote write로 넣습니다([배포 환경](docs/deployment-environment.md#kafka-컨슈머-지표-36)). 알림 `ExpoChanged*`는 [Grafana 알림](docs/alerting.md#kafka-컨슈머-알림-expochanged)입니다.
 - **Expo Gateway**: Gateway 전용 (Expo-Gateway 원본에서 가져왔으며, 공유 스택의 런타임 쿼리에는 `service="expo-gateway"` 필터를 추가했습니다. 원본 갱신 시 이 필터를 유지하세요)
 - **Expo Form**: 요청 RED, 공개 설문 경로(`/surveys/public`, `/surveys/answer/public`), 아웃박스 상태·나이, 릴레이, 결과 컨슈머 skip, DB 연결 풀, 박람회·유저 호출. 패널 1·2는 Grafana 알림의 이미지용이라 id를 바꾸지 않습니다.
 - **Expo Attendance**: 입구 스캔 RED, name별 회로, 대상/outcome별 호출, kind별 락 대기, QR backlog. 실제 Eureka 이름은 `expo-attention-server`입니다.

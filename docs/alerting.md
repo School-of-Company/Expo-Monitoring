@@ -3,7 +3,7 @@
 알림 경로는 둘입니다(#14, #15).
 
 1. **기본 경로**: `prometheus/rules/*.yml` -> Alertmanager -> Discord. 규칙을 추가하면 자동으로 Discord에 갑니다. 이 문서의 "Alertmanager" 절.
-2. **그래프 이미지 변형**: Grafana 관리 규칙(`grafana/provisioning/alerting/rules.yml`) 3개(`ServiceHigh5xxRate`, `FormOutboxStalled`, `FormDbPoolExhausted`)는 발화 시 패널 PNG를 붙여 Discord로 보냅니다. 이 문서의 "Grafana 알림" 절.
+2. **그래프 이미지 변형**: Grafana 관리 규칙(`grafana/provisioning/alerting/rules.yml`) 3개(`ServiceHigh5xxRate`, `FormOutboxStalled`, `FormDbPoolExhausted`)와 Kafka 컨슈머 알림 3개(`ExpoChanged*`)는 발화 시 패널 PNG를 붙여 Discord로 보냅니다. 이 문서의 "Grafana 알림" 절.
 
 ## 중복 방지 (같은 조건이 Discord에 두 번 오지 않게)
 
@@ -11,7 +11,9 @@
 
 이유: 가장 단순합니다. 규칙 파일을 지우거나 이름을 바꾸지 않고, 억제 규칙(inhibit)처럼 조건이 얽히지도 않습니다. 새 이미지 변형을 추가할 때는 Grafana 규칙의 `title`과 같은 이름을 `alertname=~"..."` 목록에 더하면 됩니다(Prometheus 쪽에 같은 이름의 규칙이 없다면 목록 추가도 필요 없습니다).
 
-대가: Grafana가 죽으면 이 3개는 Discord로 오지 않습니다(Prometheus UI에서만 `ServiceHigh5xxRate`가 보임). `FormOutboxStalled`·`FormDbPoolExhausted`는 Prometheus 쪽 규칙이 없어 Grafana 의존입니다. `dev/validate-prometheus.sh`가 `amtool config routes test`로 이 3개가 `null`로 가는지 CI에서 검사합니다.
+박람회 변경 이벤트 컨슈머 알림 3개(`ExpoChanged*`, #36)도 Grafana 관리 규칙만 있고 Prometheus 쪽 규칙이 없습니다(`FormOutboxStalled`와 같은 이유). 운영 서버의 알림 경로가 Grafana(Discord)이고, Alertmanager 목록에 더할 필요도 없습니다.
+
+대가: Grafana가 죽으면 위 Grafana 관리 알림은 Discord로 오지 않습니다(Prometheus UI에서만 `ServiceHigh5xxRate`가 보임). `FormOutboxStalled`·`FormDbPoolExhausted`는 Prometheus 쪽 규칙이 없어 Grafana 의존입니다. `dev/validate-prometheus.sh`가 `amtool config routes test`로 이 3개가 `null`로 가는지 CI에서 검사합니다.
 
 ## Alertmanager
 
@@ -65,7 +67,7 @@
 | `contact-points.yml` | 연락처 `discord`. 웹훅 주소는 `$__env{DISCORD_WEBHOOK_URL}`                                                                 |
 | `policies.yml`       | 루트 정책의 수신자 `discord`, `group_by: [alertname, service]`, `group_wait 30s`, `group_interval 5m`, `repeat_interval 4h` |
 | `templates.yml`      | 제목 `expo.title`, 본문 `expo.message`(서비스·요약·현재 값·대시보드/패널 링크·런북·silence 링크, 복구 표시)                 |
-| `rules.yml`          | `ServiceHigh5xxRate`, `FormOutboxStalled`, `FormDbPoolExhausted`                                                            |
+| `rules.yml`          | `ServiceHigh5xxRate`, `FormOutboxStalled`, `FormDbPoolExhausted`, `ExpoChangedConsumerLag`, `ExpoChangedDeadLetter`, `ExpoChangedConsumerStalled` |
 
 루트 정책이 처음부터 Discord이므로 기본 이메일 연락처(SMTP 미설정 오류)로 새지 않습니다. 대기·반복 시간은 노이즈를 본 뒤 조정하세요.
 
@@ -83,6 +85,16 @@
 - 주석: `summary`(한 줄), `runbook_url`([docs/runbooks.md](runbooks.md)의 앵커), `__dashboardUid__`와 `__panelId__`(발화 때 해당 패널을 이미지로 첨부하고 템플릿의 패널 링크가 됩니다). 이미지에 쓸 패널은 발화 시점에 값이 보이는 쿼리여야 합니다.
 - 조건은 `A`(Prometheus 즉시 쿼리) -> `B`(reduce last) -> `C`(threshold). 템플릿의 "현재 값"은 `B`입니다.
 - 새 파일을 추가하거나 고치면 Grafana를 재시작합니다.
+
+## Kafka 컨슈머 알림 (`ExpoChanged*`)
+
+지표는 Alloy의 내장 Kafka exporter(`alloy/kafka.alloy`)가 remote write로 Prometheus에 넣습니다. 이름은 kafka_exporter 계열이지만 lag은 `kafka_consumergroup_uncommitted_offsets{consumergroup,topic,partition}`입니다(`kafka_consumergroup_lag`는 나오지 않음, 운영에서 확인). 라벨은 `job="integrations/kafka"`, `instance=<브로커>`입니다.
+
+- `ExpoChangedConsumerLag`(warning, 2분): `expo.expo.changed`의 그룹별 lag > 0.
+- `ExpoChangedDeadLetter`(warning, 즉시): `expo.expo.changed.(dlt|dlq)` 끝 오프셋의 10분 증가 > 0. Notification만 `.dlq`입니다.
+- `ExpoChangedConsumerStalled`(critical, 1분): lag > 0이고 커밋 오프셋 5분 변화 없음.
+
+그룹·토픽은 서비스가 `KAFKA_EXPO_PROJECTION_ENABLED`를 켠 뒤에야 생기므로 `noDataState: OK`입니다. `service` 라벨은 컨슈머 그룹 이름(`expo-<서비스>-server.expo-changed`)을 `label_join`으로 복사합니다. `label_replace`의 `$1`은 Grafana 프로비저닝이 환경 변수로 치환하므로 쓰지 않았습니다. 임계값은 초안입니다. 런북: [박람회 변경 이벤트 소비](runbooks.md#박람회-변경-이벤트-소비-공통-복구-절차).
 
 ## 이미지
 

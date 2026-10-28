@@ -1,0 +1,33 @@
+// Kafka consumer lag and topic offsets (issue #36) -> Prometheus remote write.
+// Alloy's embedded kafka_exporter. Checked on the production server: the lag is
+// kafka_consumergroup_uncommitted_offsets{consumergroup,topic,partition} (there is no kafka_consumergroup_lag),
+// plus kafka_consumergroup_current_offset, kafka_consumergroup_members and
+// kafka_topic_partition_current_offset{topic,partition}. The exporter's own labels win over job_name:
+// samples carry job="integrations/kafka" and instance=<broker>. Dashboard: Expo / Kafka 이벤트 소비 (expo-kafka);
+// alerts: grafana/provisioning/alerting/rules.yml (ExpoChanged*).
+//
+// Separate from config.alloy on purpose: Docker Compose has no Kafka, and an exporter that cannot reach a
+// broker must not take the log pipeline down with it. Compose loads only config.alloy; production loads this
+// file next to it (docs/deployment-environment.md). The server has no free fixed port for a standalone
+// kafka-exporter, so Alloy scrapes in-process and pushes with remote write: Prometheus needs
+// --web.enable-remote-write-receiver.
+//
+//   KAFKA_URI                    broker address (default: the production broker on the same host)
+//   PROMETHEUS_REMOTE_WRITE_URL  Prometheus /api/v1/write (default: the Compose service name)
+
+prometheus.exporter.kafka "expo" {
+  kafka_uris = [coalesce(sys.env("KAFKA_URI"), "127.0.0.1:26111")]
+}
+
+prometheus.scrape "kafka" {
+  targets         = prometheus.exporter.kafka.expo.targets
+  job_name        = "kafka"
+  scrape_interval = "15s"
+  forward_to      = [prometheus.remote_write.local.receiver]
+}
+
+prometheus.remote_write "local" {
+  endpoint {
+    url = coalesce(sys.env("PROMETHEUS_REMOTE_WRITE_URL"), "http://prometheus:9090/api/v1/write")
+  }
+}
