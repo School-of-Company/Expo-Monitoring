@@ -107,3 +107,113 @@ groups:
               expression: B
               conditions:
                 - evaluator: {type: gt, params: [0]}
+
+  # Consumers of expo.expo.changed (issue #36). Metrics come from Alloy's Kafka exporter (job "kafka").
+  # Groups and topics exist only after a service enables KAFKA_EXPO_PROJECTION_ENABLED, hence noData OK.
+  # No Prometheus twin in prometheus/rules/ (like FormOutboxStalled): Discord gets each alert once.
+  # service = the consumer group (expo-<name>-server.expo-changed), copied with label_join: label_replace
+  # would need "$1", and Grafana expands $ in provisioning files.
+  - orgId: 1
+    name: expo-kafka-consumers
+    folder: Expo
+    interval: 1m
+    rules:
+      - uid: grafana-expo-changed-lag
+        title: ExpoChangedConsumerLag
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "박람회 변경 이벤트(expo.expo.changed) lag이 2분 넘게 0보다 큽니다 (값: 남은 메시지 수)"
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#expochangedconsumerlag
+          __dashboardUid__: expo-kafka
+          __panelId__: "2"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: label_join(sum by (consumergroup) (kafka_consumergroup_uncommitted_offsets{topic="expo.expo.changed"}), "service", "", "consumergroup")
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, settings: {mode: dropNN}}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+
+      - uid: grafana-expo-changed-dead-letter
+        title: ExpoChangedDeadLetter
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "박람회 변경 이벤트가 DLT/DLQ로 넘어갔습니다 (값: 최근 10분 유입 수)"
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#expochangeddeadletter
+          __dashboardUid__: expo-kafka
+          __panelId__: "4"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              # Notification writes .dlq, the other consumers .dlt.
+              expr: sum by (topic) (increase(kafka_topic_partition_current_offset{topic=~"expo[.]expo[.]changed[.](dlt|dlq)"}[10m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, settings: {mode: dropNN}}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+
+      - uid: grafana-expo-changed-stalled
+        title: ExpoChangedConsumerStalled
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "박람회 변경 이벤트 lag이 남았는데 커밋 오프셋이 5분간 그대로입니다. 소비 정지 의심 (값: lag)"
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#expochangedconsumerstalled
+          __dashboardUid__: expo-kafka
+          __panelId__: "6"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: label_join((sum by (consumergroup) (kafka_consumergroup_uncommitted_offsets{topic="expo.expo.changed"}) > 0) and on (consumergroup) (sum by (consumergroup) (changes(kafka_consumergroup_current_offset{topic="expo.expo.changed"}[5m])) == 0), "service", "", "consumergroup")
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, settings: {mode: dropNN}}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0]}
