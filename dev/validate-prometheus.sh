@@ -9,6 +9,7 @@ promtool test rules /p/tests/rules.test.yml /p/tests/attendance.test.yml /p/test
 # Loki config and Alloy pipeline syntax (Tempo has no offline verify; the demo run covers it).
 docker run --rm -v "$PWD/loki:/c:ro" grafana/loki:3.3.2 -config.file=/c/loki.yml -config.expand-env=true -verify-config
 docker run --rm -v "$PWD/alloy:/c:ro" grafana/alloy:v1.5.1 fmt /c/config.alloy >/dev/null
+docker run --rm -v "$PWD/alloy:/c:ro" grafana/alloy:v1.5.1 fmt /c/kafka.alloy >/dev/null
 
 # Alertmanager: the webhook is a dummy file and the Grafana URL is rendered into the template like at container start.
 docker run --rm --entrypoint sh -v "$PWD/alertmanager:/a:ro" prom/alertmanager:v0.28.1 -c '

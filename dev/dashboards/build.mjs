@@ -7,8 +7,9 @@ import { fileURLToPath } from 'node:url';
 import { overview } from './overview.mjs';
 import { SERVICES, serviceDashboard } from './services.mjs';
 import { logsDashboard } from './logs.mjs';
+import { kafkaDashboard } from './kafka.mjs';
 
-const DASHBOARDS = [overview, ...SERVICES.map(serviceDashboard), logsDashboard];
+const DASHBOARDS = [overview, ...SERVICES.map(serviceDashboard), logsDashboard, kafkaDashboard];
 
 const outDir = fileURLToPath(new URL('../../grafana/dashboards/', import.meta.url));
 const check = process.argv.includes('--check');

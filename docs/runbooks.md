@@ -108,3 +108,47 @@ Form이 박람회·유저 서비스 호출을 동시 호출 상한(기본 20개 
 
 1. 알림의 `exported_service`, `operation`을 확인하고 상대 서비스 대시보드를 봅니다.
 2. 이 지연이 `FormHighLatency`, 공개 설문 지연으로 번지는지 확인합니다.
+
+## 박람회 변경 이벤트 소비 (공통 복구 절차)
+
+아래 세 알림(`ExpoChanged*`)은 `expo.expo.changed`를 소비하는 Form·User·Attendance·Notification·Application의 컨슈머 그룹(`expo-<서비스>-server.expo-changed`)을 봅니다. 소비가 멈추면 앱은 살아 있어도 로컬 프로젝션이 옛 박람회 값을 답합니다. 지표는 Alloy의 Kafka exporter가 모읍니다(`kafka_consumergroup_uncommitted_offsets`가 lag). 대시보드: **Expo / Kafka 이벤트 소비**(`expo-kafka`).
+
+1. **원인 확인**
+   - 브로커: `pm2 logs expo-kafka --lines 200`, `pm2 describe expo-kafka`. 브로커가 죽었으면 모든 그룹의 lag이 함께 오르고 대시보드 값도 끊깁니다.
+   - 서비스 로그: Loki `{service="<알림의 서비스>"} |~ "(?i)kafka|consumer|rebalanc"` 또는 `pm2 logs <서비스>`. 연결 끊김, 역직렬화 실패, 반복 리밸런싱을 봅니다.
+   - 리스너 상태: 대시보드의 `그룹별 멤버 수`가 0이면 그 그룹을 소비하는 프로세스가 없습니다. 서비스의 `KAFKA_EXPO_PROJECTION_ENABLED`가 켜져 있는지도 확인합니다.
+2. **필요하면 소비자 서비스를 재시작**합니다: `pm2 restart <서비스>`. 재시작 후 멤버 수가 1 이상인지 봅니다.
+3. **원인을 해소한 뒤 republish를 1회** 호출합니다. 서버에서 Expo로 직접 호출합니다(Gateway는 `/internal`을 404로 막습니다).
+
+   ```bash
+   curl -fsS -X POST http://127.0.0.1:26123/internal/expo-events/republish \
+     -H "<내부 토큰 헤더>: <내부 토큰>"   # 헤더 이름과 값은 Expo 서버 설정을 따릅니다. 토큰을 기록·공유하지 않습니다.
+   ```
+
+   모든 박람회의 최신 상태가 다시 발행되므로 **DLT/DLQ 메시지를 따로 재처리하지 않습니다.** 여러 번 부를 필요도 없습니다.
+4. **확인**: `컨슈머 그룹별 lag`이 0으로 돌아오고 `최근 10분 DLT/DLQ 유입`이 0으로 머무는지 봅니다. republish 직후 lag이 잠깐 오르는 것은 정상입니다.
+
+## ExpoChangedConsumerLag
+
+`expo.expo.changed`의 그룹별 lag(`sum by (consumergroup) (kafka_consumergroup_uncommitted_offsets)`)이 0보다 큰 상태가 2분 지속. 이벤트가 드물어 lag은 평소에 0입니다. 알림의 `service`는 컨슈머 그룹 이름입니다.
+
+1. 한 그룹만이면 그 서비스, 모든 그룹이면 브로커를 의심합니다.
+2. 커밋 오프셋이 움직이면 느리게라도 소비 중입니다. 움직이지 않으면 `ExpoChangedConsumerStalled`도 곧 발화합니다.
+3. [공통 복구 절차](#박람회-변경-이벤트-소비-공통-복구-절차)를 따릅니다.
+
+## ExpoChangedDeadLetter
+
+`expo.expo.changed.dlt`(Notification은 `.dlq`)의 끝 오프셋이 최근 10분 안에 늘었습니다. 반영에 실패한 박람회는 다음 변경 전까지 그 서비스에서 옛 값에 머뭅니다. 10분이 지나면 알림이 저절로 해소되므로 해소됐다고 처리된 것은 아닙니다.
+
+1. 알림의 `topic`으로 `.dlt`(Form·User·Attendance·Application) 또는 `.dlq`(Notification)인지 봅니다. `.dlt`는 여러 서비스가 함께 쓰므로 서비스 로그에서 실패 로그를 찾아 어느 서비스인지 확인합니다.
+2. 실패 원인(스키마 변경, 프로젝션 DB 오류, 버그)을 해소합니다.
+3. [공통 복구 절차](#박람회-변경-이벤트-소비-공통-복구-절차)의 republish로 복구합니다. DLT 메시지를 다시 넣지 않습니다.
+
+토픽이 처음 생길 때(첫 DLT 메시지)는 이전 샘플이 없어 증가로 잡히지 않을 수 있습니다. 대시보드의 `DLT/DLQ 끝 오프셋`도 함께 봅니다.
+
+## ExpoChangedConsumerStalled
+
+`expo.expo.changed`의 lag이 0보다 큰데 그룹의 커밋 오프셋이 5분 동안 한 번도 바뀌지 않은 상태가 1분 지속(critical). 리스너 컨테이너 정지, 브로커 연결 끊김, 반복 리밸런싱으로 소비가 멈춘 것입니다.
+
+1. `그룹별 멤버 수`가 0인지, 서비스 로그에 리밸런싱이 반복되는지 봅니다.
+2. 대부분 서비스 재시작이 필요합니다. [공통 복구 절차](#박람회-변경-이벤트-소비-공통-복구-절차)를 따릅니다.
