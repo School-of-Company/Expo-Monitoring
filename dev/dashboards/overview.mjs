@@ -27,7 +27,7 @@ export function overview() {
     title: 'Expo / Overview',
     description: '전 서비스의 수집 상태·요청·오류·응답 시간·런타임과 Redis·Postgres 히트율을 한 화면에서 비교합니다.',
     variables: [datasourceVariable('prometheus', { name: 'Prometheus', uid: 'prometheus' })],
-    links: [...SERVICES.map((s) => ({ title: s.label, uid: `expo-svc-${s.short}` })), { title: '로그', uid: 'expo-logs' }],
+    links: [...SERVICES.map((s) => ({ title: s.label, uid: `expo-svc-${s.short}` })), { title: '로그', uid: 'expo-logs' }, { title: 'Kafka 소비', uid: 'expo-kafka' }],
     panels: [
       stat('메트릭 수집 상태', [['max by (service) (up{job="eureka-services"})', '{{service}}']], {
         w: 24,
