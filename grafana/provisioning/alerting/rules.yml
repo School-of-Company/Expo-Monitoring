@@ -217,3 +217,46 @@ groups:
               expression: B
               conditions:
                 - evaluator: {type: gt, params: [0]}
+
+  # Gateway connection-failure quarantine (issue #41). Metrics come from Expo-Gateway#106; until it is
+  # deployed the series do not exist, hence noData OK. No Prometheus twin: Discord gets it once.
+  # Counter, not the gauge: gateway_upstream_quarantined_instances is only updated per request and stays > 0 when traffic stops.
+  # service = Eureka label of the gateway (expo-gateway); the target service is the app label.
+  # Summary uses .Labels.app, not $labels: Grafana expands $ in provisioning files.
+  - orgId: 1
+    name: expo-gateway
+    folder: Expo
+    interval: 1m
+    rules:
+      - uid: grafana-gateway-quarantine
+        title: GatewayUpstreamInstanceQuarantined
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gateway가 연결 실패로 {{ .Labels.app }} 인스턴스를 5분간 3회 이상 부하 분산에서 제외했습니다 (값: 5분 제외 횟수). Eureka는 아직 UP일 수 있습니다"
+          runbook_url: https://github.com/School-of-Company/Expo-Monitoring/blob/main/docs/runbooks.md#gatewayupstreaminstancequarantined
+          __dashboardUid__: expo-gateway
+          __panelId__: "24"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum by (service, app) (increase(gateway_upstream_quarantines_total[5m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last, settings: {mode: dropNN}}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [2]}

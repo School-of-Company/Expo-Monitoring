@@ -152,3 +152,12 @@ Form이 박람회·유저 서비스 호출을 동시 호출 상한(기본 20개 
 
 1. `그룹별 멤버 수`가 0인지, 서비스 로그에 리밸런싱이 반복되는지 봅니다.
 2. 대부분 서비스 재시작이 필요합니다. [공통 복구 절차](#박람회-변경-이벤트-소비-공통-복구-절차)를 따릅니다.
+
+## GatewayUpstreamInstanceQuarantined
+
+Gateway가 연결 실패(거부·2초 연결 타임아웃·도달 불가)로 `app`의 인스턴스를 부하 분산에서 제외한 횟수가 5분에 3회 이상인 상태가 1분 지속(warning). 제외는 10초이고, 죽은 인스턴스는 제외가 끝날 때마다 다시 실패해 재제외됩니다. Eureka는 lease가 끝날 때까지 수 분간 그 인스턴스를 UP으로 보고하므로 이 알림이 먼저 옵니다. 알림의 `service`는 Gateway(`expo-gateway`), 대상 서비스는 `app`입니다. 지표는 Expo-Gateway#106 이후에만 있습니다. 대시보드: **Expo Gateway**(`expo-gateway`)의 Upstream connections.
+
+1. `Connect failures and retries / s`의 `reason`을 봅니다. `refused`면 프로세스가 죽었거나 포트가 닫힘, `timeout`·`unreachable`이면 호스트·네트워크 문제입니다.
+2. `UP instances by app (Eureka's view)`와 비교합니다. Eureka가 아직 UP이면 lease 만료 전인 죽은 인스턴스입니다. `pm2 describe <서비스>`, `pm2 logs <서비스> --lines 200`으로 OOM·크래시를 확인하고 필요하면 `pm2 restart <서비스>`.
+3. 재시도(`retry`)가 성공하면 사용자 오류는 없을 수 있습니다. `502 ratio by app`이 함께 오르면 남은 인스턴스도 없거나 실패 중이므로 서비스 복구가 우선입니다.
+4. 인스턴스가 하나뿐인 서비스는 제외할 대상이 없어 502로 바로 이어집니다.

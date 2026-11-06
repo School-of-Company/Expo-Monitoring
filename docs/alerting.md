@@ -3,7 +3,7 @@
 알림 경로는 둘입니다(#14, #15).
 
 1. **기본 경로**: `prometheus/rules/*.yml` -> Alertmanager -> Discord. 규칙을 추가하면 자동으로 Discord에 갑니다. 이 문서의 "Alertmanager" 절.
-2. **그래프 이미지 변형**: Grafana 관리 규칙(`grafana/provisioning/alerting/rules.yml`) 3개(`ServiceHigh5xxRate`, `FormOutboxStalled`, `FormDbPoolExhausted`)와 Kafka 컨슈머 알림 3개(`ExpoChanged*`)는 발화 시 패널 PNG를 붙여 Discord로 보냅니다. 이 문서의 "Grafana 알림" 절.
+2. **그래프 이미지 변형**: Grafana 관리 규칙(`grafana/provisioning/alerting/rules.yml`) 3개(`ServiceHigh5xxRate`, `FormOutboxStalled`, `FormDbPoolExhausted`)와 Kafka 컨슈머 알림 3개(`ExpoChanged*`), Gateway 인스턴스 제외 알림(`GatewayUpstreamInstanceQuarantined`)은 발화 시 패널 PNG를 붙여 Discord로 보냅니다. 이 문서의 "Grafana 알림" 절.
 
 ## 중복 방지 (같은 조건이 Discord에 두 번 오지 않게)
 
@@ -11,7 +11,7 @@
 
 이유: 가장 단순합니다. 규칙 파일을 지우거나 이름을 바꾸지 않고, 억제 규칙(inhibit)처럼 조건이 얽히지도 않습니다. 새 이미지 변형을 추가할 때는 Grafana 규칙의 `title`과 같은 이름을 `alertname=~"..."` 목록에 더하면 됩니다(Prometheus 쪽에 같은 이름의 규칙이 없다면 목록 추가도 필요 없습니다).
 
-박람회 변경 이벤트 컨슈머 알림 3개(`ExpoChanged*`, #36)도 Grafana 관리 규칙만 있고 Prometheus 쪽 규칙이 없습니다(`FormOutboxStalled`와 같은 이유). 운영 서버의 알림 경로가 Grafana(Discord)이고, Alertmanager 목록에 더할 필요도 없습니다.
+박람회 변경 이벤트 컨슈머 알림 3개(`ExpoChanged*`, #36)도 Grafana 관리 규칙만 있고 Prometheus 쪽 규칙이 없습니다(`FormOutboxStalled`와 같은 이유). 운영 서버의 알림 경로가 Grafana(Discord)이고, Alertmanager 목록에 더할 필요도 없습니다. `GatewayUpstreamInstanceQuarantined`(#41)도 같습니다. 같은 장애에서 `GatewayUpstream502Rate`(Prometheus 규칙)도 울 수 있지만 조건·이름이 다른 별개 알림이고, 운영에는 Alertmanager가 없어 Discord로는 Grafana 것만 갑니다.
 
 대가: Grafana가 죽으면 위 Grafana 관리 알림은 Discord로 오지 않습니다(Prometheus UI에서만 `ServiceHigh5xxRate`가 보임). `FormOutboxStalled`·`FormDbPoolExhausted`는 Prometheus 쪽 규칙이 없어 Grafana 의존입니다. `dev/validate-prometheus.sh`가 `amtool config routes test`로 이 3개가 `null`로 가는지 CI에서 검사합니다.
 
@@ -67,7 +67,7 @@
 | `contact-points.yml` | 연락처 `discord`. 웹훅 주소는 `$__env{DISCORD_WEBHOOK_URL}`                                                                 |
 | `policies.yml`       | 루트 정책의 수신자 `discord`, `group_by: [alertname, service]`, `group_wait 30s`, `group_interval 5m`, `repeat_interval 4h` |
 | `templates.yml`      | 제목 `expo.title`, 본문 `expo.message`(서비스·요약·현재 값·대시보드/패널 링크·런북·silence 링크, 복구 표시)                 |
-| `rules.yml`          | `ServiceHigh5xxRate`, `FormOutboxStalled`, `FormDbPoolExhausted`, `ExpoChangedConsumerLag`, `ExpoChangedDeadLetter`, `ExpoChangedConsumerStalled` |
+| `rules.yml`          | `ServiceHigh5xxRate`, `FormOutboxStalled`, `FormDbPoolExhausted`, `ExpoChangedConsumerLag`, `ExpoChangedDeadLetter`, `ExpoChangedConsumerStalled`, `GatewayUpstreamInstanceQuarantined` |
 
 루트 정책이 처음부터 Discord이므로 기본 이메일 연락처(SMTP 미설정 오류)로 새지 않습니다. 대기·반복 시간은 노이즈를 본 뒤 조정하세요.
 
@@ -95,6 +95,15 @@
 - `ExpoChangedConsumerStalled`(critical, 1분): lag > 0이고 커밋 오프셋 5분 변화 없음.
 
 그룹·토픽은 서비스가 `KAFKA_EXPO_PROJECTION_ENABLED`를 켠 뒤에야 생기므로 `noDataState: OK`입니다. `service` 라벨은 컨슈머 그룹 이름(`expo-<서비스>-server.expo-changed`)을 `label_join`으로 복사합니다. `label_replace`의 `$1`은 Grafana 프로비저닝이 환경 변수로 치환하므로 쓰지 않았습니다. 임계값은 초안입니다. 런북: [박람회 변경 이벤트 소비](runbooks.md#박람회-변경-이벤트-소비-공통-복구-절차).
+
+## Gateway 인스턴스 제외 알림 (`GatewayUpstreamInstanceQuarantined`)
+
+지표는 Expo-Gateway#106(`gateway_upstream_quarantines_total{app}` 등)이 배포된 뒤에만 생기므로 `noDataState: OK`입니다. 조건: `sum by (service, app) (increase(gateway_upstream_quarantines_total[5m])) > 2`가 1분 지속(warning).
+
+- 카운터를 씁니다. 게이지 `gateway_upstream_quarantined_instances`는 요청마다 갱신되어 트래픽이 끊기면 마지막 값에 머뭅니다.
+- `> 2`: 일시적 1~2회 실패는 무시합니다. 죽은 인스턴스는 10초 제외 뒤 다시 실패해 재제외되므로 트래픽이 있으면 5분에 3회를 넘습니다. 라벨 조합이 처음 생기는 증가는 `increase`에 잡히지 않을 수 있습니다.
+- `service`는 Eureka 라벨(`expo-gateway`), 대상 서비스는 `app`입니다. 요약은 `$labels` 대신 `.Labels.app`을 씁니다(프로비저닝의 `$` 치환).
+- 임계값은 초안입니다. 런북: [GatewayUpstreamInstanceQuarantined](runbooks.md#gatewayupstreaminstancequarantined).
 
 ## 이미지
 
