@@ -28,7 +28,7 @@ jobs:
         run: bash dev/validate-prometheus.sh
 
       - name: Package
-        run: tar czf release.tar.gz prometheus grafana loki alloy
+        run: tar czf release.tar.gz prometheus grafana loki alloy alertmanager
 
       - name: Configure SSH
         env:

@@ -34,18 +34,55 @@
 - 단 **Grafana 컨테이너는 같은 `DISCORD_WEBHOOK_URL`을 환경 변수(`$__env{...}`)로 받으므로 `docker inspect`에 웹훅이 보입니다**(기존 방식). 호스트에서 `docker compose config`를 실행해도 이 값이 출력됩니다. Docker 권한이 있는 사람과 그 출력이 남는 로그에 노출될 수 있습니다.
 - `DISCORD_WEBHOOK_URL`이 **비어 있으면** secret 파일이 마운트되지 않지만 Alertmanager는 **정상 기동**합니다(기동 시 경고 없음). 알림을 전송할 때에야 `read webhook_url_file: open /run/secrets/discord_webhook_url: no such file or directory` 오류가 로그에 남고 전송은 실패합니다. 서버 `.env`에 꼭 설정하세요.
 
-### 운영 배포 (미정)
+### 운영 배포 (서버: 바이너리·pm2)
 
-**운영 서버 배포 방식은 아직 정해지지 않았습니다.** `deploy.yml`은 `prometheus/`, `grafana/`만 올리고 `alertmanager/`는 포함하지 않으며 이번 변경에서도 바꾸지 않았습니다. 이 저장소가 제공하는 것은 Compose(개발·검증용)와 아래 절차입니다. 서버가 바이너리/pm2 환경이라면:
+`deploy.yml`이 `alertmanager/`를 릴리스 묶음에 포함합니다. 서버에서 컨테이너가 시작할 때 해 주던 일(템플릿 렌더링, 비밀 경로, Prometheus 대상 주소)은 `alertmanager/prepare-server.sh`가 대신합니다. 서버의 `deploy.sh`는 이 스크립트를 한 줄 부르고, pm2에 `expo-alertmanager`를 더하면 됩니다. `deploy.sh`와 `ecosystem.config.cjs`는 서버에만 있으므로 아래 변경은 서버 담당자가 적용합니다. `dev/test-prepare-server.sh`가 스크립트의 변환을 확인합니다(CI 포함, Docker·네트워크 불필요).
 
-1. Alertmanager 바이너리(v0.28.1 권장, 검증 버전)를 받고 `alertmanager.yml`, `templates/expo.tmpl`을 서버에 둡니다.
-2. 웹훅을 파일로 둡니다(권한 600, 저장소 밖): `/srv/.../secrets/discord_webhook_url`. `alertmanager.yml`의 `webhook_url_file`을 그 경로로 바꾸거나 `/run/secrets/discord_webhook_url`에 맞춥니다.
-3. 템플릿에서 Grafana 주소를 렌더링합니다: `sed "s|__GRAFANA_ROOT_URL__|http://127.0.0.1:3001|g" expo.tmpl > /tmp/templates/expo.tmpl` (`templates:` 경로와 일치시킴).
-4. pm2: `pm2 start alertmanager -- --config.file=alertmanager.yml --storage.path=<데이터 경로> --web.listen-address=127.0.0.1:9093 --cluster.listen-address=`.
-5. `prometheus.yml`의 `alerting.alertmanagers` 대상은 `alertmanager:9093`입니다. 바이너리 환경이면 `127.0.0.1:9093`으로 바꿔야 합니다(이 변환을 배포 스크립트가 하는지 미확인).
-6. 데이터 디렉터리(silence·알림 기록)를 릴리스 교체 때 보존합니다.
+**처음 한 번 (서버)**
 
-필요한 환경: 웹훅 파일, `GRAFANA_ROOT_URL`(링크 기준, 기본 `http://127.0.0.1:3001`). 서버 Docker 사용 가능 여부는 미확인입니다.
+1. Alertmanager 바이너리(v0.28.1)를 `runtime/alertmanager/`에 둡니다(`runtime/prometheus/`와 같은 방식). `amtool`도 함께 두면 스크립트가 설정을 검사합니다(`AMTOOL` 환경변수로 경로 지정, 없으면 건너뜀).
+2. 웹훅을 파일로 둡니다(권한 600, 저장소 밖): `<ROOT>/secrets/discord_webhook_url`. 값은 Grafana와 같은 채널을 씁니다.
+3. `config/ports.json`에 `alertmanager` 포트를 추가합니다. 서버에는 비어 있는 고정 포트가 없으므로 담당자가 빈 포트를 정합니다. Prometheus와 같은 서버라서 `127.0.0.1`로만 열고, 클러스터 포트는 끕니다(`--cluster.listen-address=`).
+4. 데이터 디렉터리(silence·알림 기록)는 릴리스 밖에 둡니다: `<ROOT>/data/alertmanager`.
+
+**`deploy.sh` (monitoring 분기)**
+
+```bash
+# PROCS 에 expo-alertmanager 를 더한다(헬스체크 대상 CHECK 는 첫 번째인 Prometheus 그대로)
+[ "$SVC" = monitoring ] && PROCS="expo-prometheus,expo-grafana,expo-alertmanager"
+
+# prepare_release 의 monitoring 분기 끝, promtool 검사 앞에 추가한다.
+# GRAFANA_ROOT_URL 은 알림 본문 링크의 기준 주소다(서버에서 Grafana가 듣는 주소를 담당자가 정한다. Compose 기본값은 http://127.0.0.1:3001).
+ALERT_PORT="$("$NODE" -p "require('$ROOT/config/ports.json').alertmanager")"
+bash "$rel/alertmanager/prepare-server.sh" "$rel" "$ROOT/secrets/discord_webhook_url" "${GRAFANA_ROOT_URL:?}" "$ALERT_PORT"
+```
+
+**`ecosystem.config.cjs`**
+
+```js
+{
+  name: 'expo-alertmanager',
+  script: `${ROOT}/runtime/alertmanager/alertmanager`,
+  args: [
+    `--config.file=${ROOT}/app/monitoring/current/alertmanager/server/alertmanager.yml`,
+    `--storage.path=${ROOT}/data/alertmanager`,
+    `--web.listen-address=127.0.0.1:<alertmanager 포트>`,
+    '--cluster.listen-address=',
+  ].join(' '),
+  interpreter: 'none',
+  ...logs('alertmanager'),
+}
+```
+
+`app/monitoring/current`는 심볼릭 링크라 배포 때 새 릴리스로 바뀌고, 배포가 `pm2 startOrReload`로 Alertmanager도 다시 읽습니다. 롤백하면 이전 릴리스의 `alertmanager/server/`가 그대로 있습니다(릴리스마다 `prepare-server.sh`가 만든 결과가 릴리스 안에 있기 때문). 단 이 변경이 들어간 **첫 배포**를 롤백하면 이전 릴리스에는 `alertmanager/`가 없어 `expo-alertmanager`만 기동에 실패합니다. Prometheus·Grafana는 영향이 없고 헬스체크도 Prometheus 기준입니다.
+
+**확인 방법 (적용 후)**
+
+- `curl -s 127.0.0.1:<포트>/-/ready`가 `OK`를 돌려주는지.
+- Prometheus UI의 Status → Alertmanagers에 `127.0.0.1:<포트>`가 `up`으로 보이는지(`/api/v1/alertmanagers`).
+- 웹훅이 비어 있으면 Alertmanager는 정상 기동하지만 보낼 때 `read webhook_url_file` 오류가 로그에 남습니다. 적용 직후 테스트 알림 한 번(`amtool alert add`)으로 Discord 도착을 확인합니다.
+
+Notification은 `prometheus.*` Eureka 메타데이터가 없어 수집 대상에서 빠져 있어서(위 "운영 점검" 기록), 이 경로가 열려도 Notification 중단은 `ServiceDown`이 감지하지 못합니다. 서버의 `METRICS_*` 설정을 맞추는 별도 작업이 필요합니다.
 
 ### Prometheus 규칙 규약
 
