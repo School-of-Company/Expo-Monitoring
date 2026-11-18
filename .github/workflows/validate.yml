@@ -25,6 +25,8 @@ jobs:
           node dev/verify-digest.mjs
       - name: Validate Prometheus configuration and rules
         run: bash dev/validate-prometheus.sh
+      - name: Test server-side Alertmanager preparation
+        run: bash dev/test-prepare-server.sh
       - name: Generated dashboards are up to date
         run: node dev/dashboards/build.mjs --check
       - name: Verify discovery, RED records and dashboard queries
