@@ -56,7 +56,7 @@ function target(ds, expr, legendFormat, extra = {}, refId = 'A') {
 }
 
 /** queries: [[expr, legend], ...] */
-export function timeseries(title, queries, { unit = 'short', w = 12, h = Math.min(8 + queries.length, 11), description, min, max, ds = PROMETHEUS, stacking, levelColors = false } = {}) {
+export function timeseries(title, queries, { unit = 'short', w = 12, h = Math.min(8 + queries.length, 11), description, min, max, ds = PROMETHEUS, stacking, levelColors = false, seriesLinks = [] } = {}) {
   return {
     type: 'timeseries',
     title,
@@ -77,7 +77,7 @@ export function timeseries(title, queries, { unit = 'short', w = 12, h = Math.mi
           ...(stacking ? { stacking: { mode: stacking, group: 'A' } } : {}),
         },
       },
-      overrides: levelColors ? levelOverrides() : [],
+      overrides: [...(levelColors ? levelOverrides() : []), ...linkOverrides(seriesLinks)],
     },
     options: {
       legend: { displayMode: 'table', placement: 'bottom', calcs: ['lastNotNull', 'max'], sortBy: 'Last *', sortDesc: true },
@@ -85,6 +85,24 @@ export function timeseries(title, queries, { unit = 'short', w = 12, h = Math.mi
     },
   };
 }
+
+/** seriesLinks: [{ name, title, url }] - clicking that series (by display name) offers a link, e.g. to its service dashboard. */
+function linkOverrides(seriesLinks) {
+  return seriesLinks.map(({ name, title, url }) => ({
+    matcher: { id: 'byName', options: name },
+    properties: [{ id: 'links', value: [{ title, url }] }],
+  }));
+}
+
+/** Deploy markers on every time series: the same `deploy` tag annotations the digest lists. */
+const DEPLOY_ANNOTATION = {
+  name: '배포',
+  datasource: { type: 'grafana', uid: '-- Grafana --' },
+  enable: true,
+  hide: false,
+  iconColor: 'blue',
+  target: { type: 'tags', tags: ['deploy'], matchAny: false, limit: 100 },
+};
 
 /** One tile per series. mappings/thresholds turn values into UP/DOWN or colored ratios. */
 export function stat(title, queries, { unit = 'short', w = 6, h = 5, description, mappings = [], thresholds, colorMode = 'value', textMode = 'auto', ds = PROMETHEUS, decimals } = {}) {
@@ -299,7 +317,10 @@ export function dashboard({ uid, title, description, panels, variables, tags = [
     version: 1,
     editable: false,
     time: { from: 'now-1h', to: 'now' },
+    // the digest and the alert messages use Asia/Seoul too
+    timezone: 'Asia/Seoul',
     refresh: '30s',
+    annotations: { list: [DEPLOY_ANNOTATION] },
     templating: { list: variables },
     panels: layout(panels),
   };

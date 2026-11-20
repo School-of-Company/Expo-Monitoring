@@ -11,7 +11,7 @@ Prometheus·Grafana·Loki를 읽어 Discord 웹훅으로 하루/한 주 요약�
 | 5xx 비율·p95 상위 N | Prometheus | 서비스별 상위 5개(주간은 지난주 값 병기) |
 | 오류 로그 유형 | Loki (선택) | `level=error` 로그를 메시지 앞부분으로 묶은 횟수 상위 N |
 | 인스턴스·Form | Prometheus | down 인스턴스, `form_outbox_records`, `form_outbox_oldest_pending_age_seconds`, `form_db_pool_connections{state="waiting"}` (지표가 없으면 줄 생략) |
-| 최근 배포 | Grafana | `tags=deploy` 주석 |
+| 최근 배포 | Grafana | `tags=deploy` 주석 (생성 대시보드의 그래프에도 "배포" 세로선으로 표시) |
 | 링크·이미지 | Grafana | 로컬 스냅샷 링크(`external` 끔, 실패 시 대시보드 링크), 패널 PNG 최대 2장(기본 패널 8 5xx 비율, 10 p95) |
 
 집계 구간은 실행 시각 기준 직전 24시간(일일) / 7일(주간)이고, 주간 비교는 그 직전 7일입니다. 서비스별 요청 수는 `increase(http_server_requests_seconds_count[구간])`(Gateway는 `gateway_http_requests_total`)에서 계산하므로 recording rule의 1분 값이 아니라 구간 전체 값입니다.
@@ -50,7 +50,7 @@ docker compose -f docker-compose.yml -f docker-compose.digest.yml up -d --build 
 | `DIGEST_TZ` | `Asia/Seoul` | 스케줄·표시 시간대 |
 | `DIGEST_DAILY_AT` / `DIGEST_WEEKLY_AT` | `09:00` / `MON 09:00` | `HH:MM` / `MON HH:MM`, `off`로 비활성 |
 | `DIGEST_DASHBOARD_UID` | `msa-overview` | 스냅샷·패널 대상 대시보드 |
-| `DIGEST_PANEL_IDS` | `8,10` | 첨부할 패널 id(최대 2개) |
+| `DIGEST_PANEL_IDS` | `8,10` | 첨부할 패널 id(최대 2개). 기본값은 구버전 `msa-overview`의 5xx 비율·p95입니다. 한국어 대시보드를 쓰려면 `DIGEST_DASHBOARD_UID=expo-overview`, `DIGEST_PANEL_IDS=3,5`(5xx 비율·p95) |
 | `DIGEST_SNAPSHOT_EXPIRES_SEC` | `604800` | 스냅샷 만료(7일) |
 | `DIGEST_TOP_N` / `DIGEST_LOG_TOP_N` | `5` / `5` | 상위 개수 |
 | `DIGEST_MIN_REQUESTS` | `50` | 판정에서 제외할 저트래픽 서비스 기준(구간 요청 수) |

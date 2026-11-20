@@ -20,6 +20,7 @@
 
 GitHub 워크플로는 `prometheus/`, `grafana/`, `loki/`, `alloy/`를 묶어서 업로드합니다. 서버의 `deploy.sh`가 Loki·Alloy를 실행하고 경로·주소를 치환해야 하며([로그 표준](logging.md#운영-배포-미검증)), `tempo/`와 Tempo·렌더러 서비스는 아직 이 배포 경로에 포함되어 있지 않아 서버에서 바이너리/pm2로 어떻게 띄울지 정해야 합니다(미확정, 서버의 Docker 사용 가능 여부도 미확인). `.env`와 `docker-compose.yml`을 전송하거나 실행하지 않으므로 Compose의 `GRAFANA_ADMIN_PASSWORD`, `EUREKA_HOST`가 서버 프로세스에 자동 적용되지 않습니다.
 
+- 첫 화면을 Expo / Overview로 하려면 서버 Grafana에도 `GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH` 또는 설정 파일의 `[dashboards] default_home_dashboard_path`에 서버의 `expo-overview.json` 경로를 넣습니다(Compose에는 들어 있음).
 - Grafana는 서버에서 `GF_SECURITY_ADMIN_PASSWORD` 또는 Grafana 설정 파일의 `[security] admin_password`를 설정해야 합니다. 서버의 실제 설정 방식과 기존 관리자 비밀번호는 별도 확인이 필요합니다. 기존 DB의 비밀번호 변경은 Grafana 관리자 절차를 사용합니다.
 - Prometheus 설정의 Eureka 주소는 기본 `http://eureka:8761/eureka`입니다. 서버 배포 스크립트가 실제 주소로 변환하는지, 실제 포트·경로가 맞는지 배포 결과 파일에서 확인합니다. Compose 이름 해석을 바이너리 실행에 그대로 적용하지 않습니다.
 - 서버 배포 스크립트가 룰 경로 `/etc/prometheus/rules`, Grafana datasource `http://prometheus:9090`, 대시보드 경로 `/var/lib/grafana/dashboards`를 실제 서버 경로·주소로 변환하는지도 확인합니다.

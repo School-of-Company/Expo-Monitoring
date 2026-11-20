@@ -104,7 +104,30 @@
     "from": "now-1h",
     "to": "now"
   },
+  "timezone": "Asia/Seoul",
   "refresh": "30s",
+  "annotations": {
+    "list": [
+      {
+        "name": "배포",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "blue",
+        "target": {
+          "type": "tags",
+          "tags": [
+            "deploy"
+          ],
+          "matchAny": false,
+          "limit": 100
+        }
+      }
+    ]
+  },
   "templating": {
     "list": [
       {
@@ -206,7 +229,7 @@
     {
       "type": "timeseries",
       "title": "초당 HTTP 요청 수 (req/s)",
-      "description": "서비스별 1분 요청률(recording rule service:http_requests:rate1m).",
+      "description": "서비스별 1분 요청률(recording rule service:http_requests:rate1m). 선을 누르면 서비스 대시보드로 갑니다.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -232,7 +255,144 @@
             "spanNulls": false
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-attention-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "참여 대시보드",
+                    "url": "/d/expo-svc-attention?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-user-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "유저 대시보드",
+                    "url": "/d/expo-svc-user?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-expo-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "박람회 대시보드",
+                    "url": "/d/expo-svc-expo?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-report-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "리포트 대시보드",
+                    "url": "/d/expo-svc-report?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-application-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "신청 대시보드",
+                    "url": "/d/expo-svc-application?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-gateway"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "게이트웨이 대시보드",
+                    "url": "/d/expo-svc-gateway?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-form-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "폼 대시보드",
+                    "url": "/d/expo-svc-form?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-notification-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "알림 대시보드",
+                    "url": "/d/expo-svc-notification?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -261,7 +421,7 @@
     {
       "type": "timeseries",
       "title": "HTTP 5xx 오류 비율 (%)",
-      "description": "서비스별 1분 5xx 비율. 요청이 없는 서비스는 0입니다.",
+      "description": "서비스별 1분 5xx 비율. 요청이 없는 서비스는 0입니다. 선을 누르면 서비스 대시보드로 갑니다.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -289,7 +449,144 @@
             "spanNulls": false
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-attention-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "참여 대시보드",
+                    "url": "/d/expo-svc-attention?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-user-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "유저 대시보드",
+                    "url": "/d/expo-svc-user?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-expo-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "박람회 대시보드",
+                    "url": "/d/expo-svc-expo?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-report-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "리포트 대시보드",
+                    "url": "/d/expo-svc-report?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-application-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "신청 대시보드",
+                    "url": "/d/expo-svc-application?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-gateway"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "게이트웨이 대시보드",
+                    "url": "/d/expo-svc-gateway?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-form-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "폼 대시보드",
+                    "url": "/d/expo-svc-form?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-notification-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "알림 대시보드",
+                    "url": "/d/expo-svc-notification?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -318,7 +615,7 @@
     {
       "type": "timeseries",
       "title": "서비스별 HTTP 평균 응답 시간",
-      "description": "5분 평균(합계 ÷ 건수). 요청이 없으면 비웁니다. 분위수는 서비스별 대시보드에서 봅니다.",
+      "description": "5분 평균(합계 ÷ 건수). 요청이 없으면 비웁니다. 선을 누르면 서비스 대시보드로 갑니다.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -344,7 +641,144 @@
             "spanNulls": false
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-attention-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "참여 대시보드",
+                    "url": "/d/expo-svc-attention?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-user-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "유저 대시보드",
+                    "url": "/d/expo-svc-user?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-expo-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "박람회 대시보드",
+                    "url": "/d/expo-svc-expo?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-report-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "리포트 대시보드",
+                    "url": "/d/expo-svc-report?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-application-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "신청 대시보드",
+                    "url": "/d/expo-svc-application?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-gateway"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "게이트웨이 대시보드",
+                    "url": "/d/expo-svc-gateway?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-form-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "폼 대시보드",
+                    "url": "/d/expo-svc-form?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-notification-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "알림 대시보드",
+                    "url": "/d/expo-svc-notification?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -367,6 +801,198 @@
         "h": 9,
         "w": 12,
         "x": 0,
+        "y": 14
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "서비스별 HTTP 응답 시간 p95",
+      "description": "5분 창 히스토그램의 95번째 분위수(버킷 경계 사이는 보간). digest의 \"p95 지연 상위\"와 같은 지표이며 digest는 집계 구간 전체로 계산합니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.95, sum by (service, le) (rate(http_server_requests_seconds_bucket[5m]))) or histogram_quantile(0.95, sum by (service, le) (rate(gateway_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-attention-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "참여 대시보드",
+                    "url": "/d/expo-svc-attention?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-user-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "유저 대시보드",
+                    "url": "/d/expo-svc-user?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-expo-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "박람회 대시보드",
+                    "url": "/d/expo-svc-expo?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-report-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "리포트 대시보드",
+                    "url": "/d/expo-svc-report?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-application-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "신청 대시보드",
+                    "url": "/d/expo-svc-application?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-gateway"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "게이트웨이 대시보드",
+                    "url": "/d/expo-svc-gateway?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-form-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "폼 대시보드",
+                    "url": "/d/expo-svc-form?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expo-notification-server"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "알림 대시보드",
+                    "url": "/d/expo-svc-notification?${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 5,
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
         "y": 14
       }
     },
@@ -424,12 +1050,12 @@
           }
         }
       ],
-      "id": 5,
+      "id": 6,
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 14
+        "w": 24,
+        "x": 0,
+        "y": 23
       }
     },
     {
@@ -437,12 +1063,12 @@
       "title": "런타임",
       "collapsed": false,
       "panels": [],
-      "id": 6,
+      "id": 7,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 23
+        "y": 31
       }
     },
     {
@@ -492,12 +1118,12 @@
           "sort": "desc"
         }
       },
-      "id": 7,
+      "id": 8,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 24
+        "y": 32
       }
     },
     {
@@ -547,12 +1173,12 @@
           "sort": "desc"
         }
       },
-      "id": 8,
+      "id": 9,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 24
+        "y": 32
       }
     },
     {
@@ -560,12 +1186,12 @@
       "title": "캐시·DB",
       "collapsed": false,
       "panels": [],
-      "id": 9,
+      "id": 10,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 33
+        "y": 41
       }
     },
     {
@@ -651,12 +1277,12 @@
         "justifyMode": "center",
         "orientation": "auto"
       },
-      "id": 10,
+      "id": 11,
       "gridPos": {
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 34
+        "y": 42
       }
     },
     {
@@ -721,12 +1347,12 @@
         "justifyMode": "center",
         "orientation": "auto"
       },
-      "id": 11,
+      "id": 12,
       "gridPos": {
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 34
+        "y": 42
       }
     },
     {
@@ -777,12 +1403,12 @@
           "sort": "desc"
         }
       },
-      "id": 12,
+      "id": 13,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 34
+        "y": 42
       }
     },
     {
@@ -833,12 +1459,12 @@
           "sort": "desc"
         }
       },
-      "id": 13,
+      "id": 14,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 43
+        "y": 51
       }
     },
     {
@@ -889,12 +1515,12 @@
           "sort": "desc"
         }
       },
-      "id": 14,
+      "id": 15,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 43
+        "y": 51
       }
     },
     {
@@ -945,12 +1571,12 @@
           "sort": "desc"
         }
       },
-      "id": 15,
+      "id": 16,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 52
+        "y": 60
       }
     },
     {
@@ -1012,12 +1638,12 @@
           }
         }
       ],
-      "id": 16,
+      "id": 17,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 52
+        "y": 60
       }
     },
     {
@@ -1066,12 +1692,12 @@
           "sort": "desc"
         }
       },
-      "id": 17,
+      "id": 18,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 61
+        "y": 69
       }
     },
     {
@@ -1121,12 +1747,12 @@
           "sort": "desc"
         }
       },
-      "id": 18,
+      "id": 19,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 61
+        "y": 69
       }
     }
   ]

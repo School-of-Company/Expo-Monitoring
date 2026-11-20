@@ -1,6 +1,7 @@
 {
   "uid": "msa-overview",
-  "title": "MSA Service Overview",
+  "title": "MSA Service Overview (구버전)",
+  "description": "예전 영어 대시보드입니다. digest 기본 이미지(패널 8, 10)와 Grafana 5xx 알림 스크린샷(패널 8)이 아직 이 대시보드를 써서 남겨 둡니다. 평소에는 Expo / Overview를 보세요.",
   "tags": [
     "expo"
   ],
@@ -621,6 +622,17 @@
           "mode": "multi"
         }
       }
+    }
+  ],
+  "links": [
+    {
+      "title": "Expo / Overview",
+      "type": "link",
+      "url": "/d/expo-overview",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false,
+      "icon": "dashboard"
     }
   ]
 }

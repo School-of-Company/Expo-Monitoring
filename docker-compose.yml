@@ -68,6 +68,8 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      # first screen after login (the server needs the same in grafana.ini, see docs/deployment-environment.md)
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/expo-overview.json
       # Base of the dashboard/panel/silence links in alert messages (SSH-tunnel address by default).
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://127.0.0.1:3001}
       # Discord webhook for the provisioned contact point (never commit the value).
