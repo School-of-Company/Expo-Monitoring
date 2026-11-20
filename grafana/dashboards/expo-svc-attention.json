@@ -42,7 +42,30 @@
     "from": "now-1h",
     "to": "now"
   },
+  "timezone": "Asia/Seoul",
   "refresh": "30s",
+  "annotations": {
+    "list": [
+      {
+        "name": "배포",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "blue",
+        "target": {
+          "type": "tags",
+          "tags": [
+            "deploy"
+          ],
+          "matchAny": false,
+          "limit": 100
+        }
+      }
+    ]
+  },
   "templating": {
     "list": [
       {

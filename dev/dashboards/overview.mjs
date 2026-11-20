@@ -21,6 +21,15 @@ const avgLatency = [
   '/ (sum by (service) (rate(gateway_http_request_duration_seconds_count[5m])) > 0)',
 ].join(' ');
 
+const p95Latency = [
+  'histogram_quantile(0.95, sum by (service, le) (rate(http_server_requests_seconds_bucket[5m])))',
+  'or',
+  'histogram_quantile(0.95, sum by (service, le) (rate(gateway_http_request_duration_seconds_bucket[5m])))',
+].join(' ');
+
+// A service's line links to its own dashboard, keeping the time range.
+const toService = SERVICES.map((s) => ({ name: s.name, title: `${s.label} 대시보드`, url: `/d/expo-svc-${s.short}?\${__url_time_range}` }));
+
 export function overview() {
   return dashboard({
     uid: 'expo-overview',
@@ -40,23 +49,31 @@ export function overview() {
       }),
       timeseries('초당 HTTP 요청 수 (req/s)', [['service:http_requests:rate1m', '{{service}}']], {
         unit: 'reqps',
-        description: '서비스별 1분 요청률(recording rule service:http_requests:rate1m).',
+        description: '서비스별 1분 요청률(recording rule service:http_requests:rate1m). 선을 누르면 서비스 대시보드로 갑니다.',
+        seriesLinks: toService,
       }),
       timeseries('HTTP 5xx 오류 비율 (%)', [['service:http_errors_5xx:ratio1m', '{{service}}']], {
         unit: 'percentunit',
         min: 0,
         max: 1,
-        description: '서비스별 1분 5xx 비율. 요청이 없는 서비스는 0입니다.',
+        description: '서비스별 1분 5xx 비율. 요청이 없는 서비스는 0입니다. 선을 누르면 서비스 대시보드로 갑니다.',
+        seriesLinks: toService,
       }),
       timeseries('서비스별 HTTP 평균 응답 시간', [[avgLatency, '{{service}}']], {
         unit: 's',
-        description: '5분 평균(합계 ÷ 건수). 요청이 없으면 비웁니다. 분위수는 서비스별 대시보드에서 봅니다.',
+        description: '5분 평균(합계 ÷ 건수). 요청이 없으면 비웁니다. 선을 누르면 서비스 대시보드로 갑니다.',
+        seriesLinks: toService,
+      }),
+      timeseries('서비스별 HTTP 응답 시간 p95', [[p95Latency, '{{service}}']], {
+        unit: 's',
+        description: '5분 창 히스토그램의 95번째 분위수(버킷 경계 사이는 보간). digest의 "p95 지연 상위"와 같은 지표이며 digest는 집계 구간 전체로 계산합니다.',
+        seriesLinks: toService,
       }),
       table(
         '현재 활성 알림',
         'ALERTS{alertstate="firing"}',
         { alertname: '알림', severity: '심각도', service: '서비스', instance: '인스턴스' },
-        { description: 'Prometheus에서 지금 firing 중인 알림(Alertmanager가 Discord로 보냅니다).' },
+        { w: 24, description: 'Prometheus에서 지금 firing 중인 알림(Alertmanager가 Discord로 보냅니다).' },
       ),
       row('런타임'),
       timeseries('JVM 힙 메모리 사용량', [['sum by (service) (jvm_memory_used_bytes{area="heap"})', '{{service}}']], {
